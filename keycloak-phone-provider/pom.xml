@@ -104,6 +104,9 @@
             <goals>
               <goal>single</goal>
             </goals>
+            <configuration>
+              <outputDirectory>../target/modules/${project.artifactId}/main</outputDirectory>
+            </configuration>
           </execution>
         </executions>
       </plugin>

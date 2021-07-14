@@ -30,9 +30,6 @@ public class GeetestResource {
     public GeetestResource(KeycloakSession session) {
         this.session = session;
         this.auth = new AppAuthManager().authenticateIdentityCookie(session, session.getContext().getRealm());
-        if(this.auth == null){
-            this.auth = new AppAuthManager().authenticateBearerToken(session, session.getContext().getRealm());
-        }
     }
 
     private void setCrosHeader(Response.ResponseBuilder response,
