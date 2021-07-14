@@ -1,67 +1,49 @@
 # Keycloak Phone Provider
 
- + Phone support like e-mail 
- + OTP by phone
- + Register with phone
- + Authentication by phone
-
-sms
-voice
-phone one key login
-
-With this provider you can **enforce authentication policies based on a verification token sent to users' mobile phones**.
-Currently, there are implementations of Twilio and TotalVoice and YunTongXun SMS sender services. That said, is nice to note that more
-services can be used with ease thankfully for the adopted modularity and in fact, nothing stop you from implementing a 
-sender of TTS calls or WhatsApp messages. 
-
-This is what you can do for now:
-  + Check ownership of a phone number (Forms and HTTP API)
-  + Use SMS as second factor in 2FA method (Browser flow)
-  + Reset Password by phone (Testing)
-  + Authentication by phone (HTTP API)
-  + Authentication everybody by phone, auto create user on Grant(HTTP API)
-  + Register with phone 
-  + Register only phone (user name is phone number)
-  + Register add user attribute with redirect_uri params
-
-  
-Two user attributes are going to be used by this provider: _phoneNumberVerified_ (bool) and _phoneNumber_ (str). Many
-users can have the same _phoneNumber_, but only one of them is getting _phoneNumberVerified_ = true at the end of a 
-verification process. This accommodates the use case of pre-paid numbers that get recycled if inactive for too much time.
-
-## Client:
-see my project [KeycloakClient](https://github.com/cooper-lyt/KeycloakClient) ,is android client, nothing stop you from implementing other java program.
-
-## Compatibility
-
-This was initially developed using 11.0.3 version of Keycloak as baseline, and I did not test another user storage beyond
-the default like Kerberos or LDAP. I may try to help you but I cannot guarantee.
-
-## Usage
-
-docker image is [coopersoft/keycloak-phone:11.0.3](https://hub.docker.com/layers/coopersoft/keycloak-phone/11.0.3/images/sha256-cfb890c723a2b9970c59f0bf3e0310499bb6e27e33d685edbc77d992ae15c4c9?context=repo)
-for examples  [docker-compose.yml](https://raw.githubusercontent.com/cooper-lyt/keycloak-phone-provider/master/examples/docker-compose.yml)
-run as `docker-compose up` , docker-compose is required! (image base on [keycloak-callback:11.0.3](https://github.com/cooper-lyt/keycloak-callback-provider) provide registration callback for http get , post , rocketmq , or else)
++ 支持短信验证码
++ 用短信验证码注册
++ 通过短信验证码验证
 
 
-If you want to build the project, simply run `mvn clean package docker:build` after cloning the repository. 
-At the end of the goal.
- + local keycloak installed: copt the `target` directory  all jars correctly placed in a WildFly-like folder structure. 
- + docker image build: for examples [run-local.sh](https://github.com/cooper-lyt/keycloak-phone-provider/blob/master/examples/snapshot/run-local.sh) or [run-remote.sh](https://github.com/cooper-lyt/keycloak-phone-provider/blob/master/examples/snapshot/run-remote.sh).
+通过这个插件，**你可以使用发送手机短信验证码的方式来执行认证策略**。
+支持多个短信服务商，并采用的模块化部署。
 
+目前此插件能的事：
++ 检查一个电话号码的所有权（表格和HTTP API）
++ 使用短信作为2FA方法的第二个因素（浏览器流程）
++ 通过短信验证码重置密码 (测试)
++ 通过短信验证码认证（HTTP API）
++ 每个人都通过验证码验证，自动创建用户(HTTP API)
++ 使用手机号注册
++ 只允许用手机号注册（用户名是电话号码）
++ 注册添加用户属性与redirect_uri参数
 
+这个插件将使用两个用户属性：phoneNumberVerified（bool）和phoneNumber（str）
+许多用户可以有相同的电话号码，但只有一个人在验证过程结束时获得phoneNumberVerified = true
+这适应了预付费号码的使用情况，如果不活动的时间太长，这些号码会被回收。
 
-**Installing:**
+## 客户端:
+
+此为原作者的安卓手机客户端项目 [KeycloakClient](https://github.com/cooper-lyt/KeycloakClient) 
+
+## 兼容性
+
+最初是使用11.0.3版本的Keycloak作为基线开发的，未测试其他非默认的用户存储，如Kerberos或LDAP。
+
+## 使用方法
+
+**安装教程:**
  
-  1. Merge that content with the root folder of Keycloak. You can of course delete the modules of services you won't use,
-  like TotalVoice if you're going to use Twilio.
-  2. Open your `standalone.xml` (or equivalent) and (i) include the base module and at least one SMS service provider in
-  the declaration of modules for keycloak-server subsystem. (ii) Add properties for overriding the defaults of selected
-  service provider and expiration time of tokens. (iii) Execute the additional step specified on selected service provider
-  module README.md.
-  3. Start Keycloak.
+  1. 将本项目内容下载到本地，执行mvn install进行安装，之后分别进入
+     keycloak-phone-provider、keycloak-sms-provider-dummy、以及所需的短信接口例如阿里云
+     执行mvn package编译打包，将module.xml以及后缀是-with-dependencies.jar
+     重命名删去-with-dependencies，并将原来不带-with-dependencies的删除；
+    之后将所得到的两个文件放入keycloak/modules/项目名（一个文件夹就是一个项目）/main 。
+  2. 打开你的standalone.xml，在keycloak系统的模块声明中包括基本模块和至少一个短信服务提供商。
+     添加属性以覆盖所选服务提供商的默认值和验证码的到期时间。
+  3. 启动Keycloak。
 
-i. add modules defs
+i. 添加模块
 ```xml
 <subsystem xmlns="urn:jboss:domain:keycloak-server:1.1">
     <web-context>auth</web-context>
@@ -69,21 +51,47 @@ i. add modules defs
         <provider>classpath:${jboss.home.dir}/providers/*</provider>
         <provider>module:keycloak-phone-provider</provider>
         <provider>module:keycloak-sms-provider-dummy</provider>
+        <provider>module:keycloak-sms-provider-短信服务商</provider>
     </providers>
 ...
 ```
-ii. set provider and token expiration time
+ii. 设置短信服务商以及验证码发送时间间隔。
 ```xml
 <spi name="phoneMessageService">
     <provider name="default" enabled="true">
         <properties>
-            <property name="service" value="TotalVoice"/>
+            <property name="service" value="短信服务商"/>
             <property name="tokenExpiresIn" value="60"/>
         </properties>
     </provider>
 </spi>
 ```
-
+iii. 设置短信模板ID、短信签名、accessKeyID、accessSecret
+```xml
+<spi name="messageSenderService">
+    <provider name="aliyun" enabled="true">
+        <properties>
+            <!-- 短信模板 -->
+            <property name="DEFAULT_TEMPLATE" value="短信模板ID"/>
+            <!-- 短信签名 -->
+            <property name="DEFAULT_SIGNNAME" value="短信签名"/>
+            <property name="accessKeyID" value="accessKeyID"/>
+            <property name="accessSecret" value="accessSecret"/>
+        </properties>
+    </provider>
+</spi>
+```
+iiii. 设置极验id和key
+```xml
+<spi name="captchaService">
+    <provider name="geetest" enabled="true">
+        <properties>
+            <property name="id" value="id"/>
+            <property name="key" value="key"/>
+        </properties>
+    </provider>
+</spi>
+```
 **OTP by Phone**
 
   in Authentication page, copy the browser flow and add a subflow to the forms, then adding `OTP Over SMS` as a
