@@ -60,6 +60,7 @@ ii. 设置短信服务商以及验证码发送时间间隔。
 <spi name="phoneMessageService">
     <provider name="default" enabled="true">
         <properties>
+            <!-- 短信服务商使用小写，比如说aliyun -->
             <property name="service" value="短信服务商"/>
             <property name="tokenExpiresIn" value="60"/>
         </properties>
@@ -69,13 +70,14 @@ ii. 设置短信服务商以及验证码发送时间间隔。
 iii. 设置短信模板ID、短信签名、accessKeyID、accessSecret
 ```xml
 <spi name="messageSenderService">
-    <provider name="aliyun" enabled="true">
+    <!-- 短信服务商使用小写，比如说aliyun -->
+    <provider name="短信服务商" enabled="true">
         <properties>
             <!-- 短信模板 -->
             <property name="DEFAULT_TEMPLATE" value="短信模板ID"/>
             <!-- 短信签名 -->
             <property name="DEFAULT_SIGNNAME" value="短信签名"/>
-            <property name="accessKeyID" value="accessKeyID"/>
+            <property name="accessKeyId" value="accessKeyId"/>
             <property name="accessSecret" value="accessSecret"/>
         </properties>
     </provider>
@@ -86,6 +88,7 @@ iiii. 设置极验id和key
 <spi name="captchaService">
     <provider name="geetest" enabled="true">
         <properties>
+            <!-- 如果id为空则为宕机模式 -->
             <property name="id" value="id"/>
             <property name="key" value="key"/>
         </properties>
