@@ -1,10 +1,15 @@
 package cc.coopersoft.keycloak.phone.providers.rest;
 
-import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
+import cc.coopersoft.keycloak.phone.providers.spi.ConfigService;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
+import cc.coopersoft.keycloak.phone.utils.JsonUtils;
+import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.github.fge.jackson.JsonLoader;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
-import org.json.JSONObject;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserModel;
 import org.keycloak.services.managers.AppAuthManager;
@@ -13,12 +18,17 @@ import org.keycloak.services.managers.AuthenticationManager.AuthResult;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Response;
 
-import static javax.ws.rs.core.MediaType.APPLICATION_FORM_URLENCODED;
-import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
+import java.io.IOException;
+import java.util.HashMap;
+
+import static javax.ws.rs.core.MediaType.*;
 
 public class VerificationCodeResource {
 
     private static final Logger logger = Logger.getLogger(VerificationCodeResource.class);
+
+    public static final String ENTITY_SUCCESS = "{\"status\":1}";
+
     private final KeycloakSession session;
     private final AuthResult auth;
 
@@ -54,8 +64,16 @@ public class VerificationCodeResource {
     @Produces(APPLICATION_JSON)
     @Consumes(APPLICATION_JSON)
     public Response setUserPhoneNumberJson(String reqBody){
-        JSONObject jsonObject = new JSONObject(reqBody);
-        return this.setUserPhoneNumber(jsonObject.getString("phone_number"), jsonObject.getString("code"));
+        try {
+            JsonNode jsonObject = JsonLoader.fromString(reqBody);
+
+            return this.setUserPhoneNumber(jsonObject.get(PhoneConstants.FIELD_AREA_CODE).asText(),
+                    jsonObject.get(PhoneConstants.FIELD_PHONE_NUMBER).asText(),
+                    jsonObject.get(PhoneConstants.FIELD_VERIFICATION_CODE).asText());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return Response.serverError().build();
     }
 
     @POST
@@ -63,47 +81,70 @@ public class VerificationCodeResource {
     @Path("")
     @Produces(APPLICATION_JSON)
     @Consumes(APPLICATION_FORM_URLENCODED)
-    public Response setUserPhoneNumber(@FormParam("phone_number") String phoneNumber,
-                                       @FormParam("code") String code){
-        try {
-            if (auth == null) throw new NotAuthorizedException("Bearer");
-            if (phoneNumber == null) throw new BadRequestException("Must inform a phone number");
-            if (code == null) throw new BadRequestException("Must inform a token code");
+    public Response setUserPhoneNumber(@FormParam(PhoneConstants.FIELD_AREA_CODE) String areaCode,
+                                       @FormParam(PhoneConstants.FIELD_PHONE_NUMBER) String phoneNumberStr,
+                                       @FormParam(PhoneConstants.FIELD_VERIFICATION_CODE) String code) {
 
-            UserModel user = auth.getUser();
-            getTokenCodeService().setUserPhoneNumberByCode(user, phoneNumber, code);
+        HashMap<String, Object> response = new HashMap<>();
 
-            return Response.ok().entity("{\"status\":1}").build();
-        } catch(BadRequestException | NotAuthorizedException e){
-            JSONObject response = new JSONObject();
+        PhoneNumber phoneNumber = new PhoneNumber(areaCode, phoneNumberStr);
+        if (auth == null) {
             response.put("status", -1);
-            response.put("error", e.getMessage());
-            return Response.ok().entity(response.toString()).build();
+            response.put("error", "Please login.");
+            response.put("errormsg", "needAuth");
+            return Response.ok(response, APPLICATION_JSON_TYPE).build();
         }
+        if (phoneNumber.isEmpty()) {
+            response.put("status", 0);
+            response.put("error", "Must inform a phone number");
+            response.put("errormsg", "phoneNumberCannotBeEmpty");
+            return Response.ok(response, APPLICATION_JSON_TYPE).build();
+        }
+        if (code == null) {
+            response.put("status", 0);
+            response.put("error", "Token code cannot be empty");
+            response.put("errormsg", "smsCodeCannotBeEmpty");
+            return Response.ok(response, APPLICATION_JSON_TYPE).build();
+        }
+
+        UserModel user = auth.getUser();
+        getTokenCodeService().setUserPhoneNumberByCode(user, phoneNumber, code);
+
+        return Response.ok().entity(ENTITY_SUCCESS).build();
     }
 
-    @GET
     @POST
     @NoCache
     @Path("/unset")
     @Produces(APPLICATION_JSON)
     @Consumes({APPLICATION_JSON, APPLICATION_FORM_URLENCODED})
     public Response unsetUserPhoneNumber(){
+        HashMap<String, Object> response = new HashMap<>();
+        ConfigService config = session.getProvider(ConfigService.class);
+        if (!config.isAllowUnset()){
+            response.put("status", -3);
+            response.put("error", "Not allowed to unset phone number");
+            response.put("errormsg", "unsetPhoneNumberNotAllowed");
+            return Response.ok(response, APPLICATION_JSON_TYPE).build();
+        }
         try {
             if (auth == null) throw new NotAuthorizedException("Bearer");
 
             UserModel user = auth.getUser();
-            if(!user.isEmailVerified()){
-                return Response.ok().entity("{\"status\":-2, \"error\": \"Email Unverified.\"}").build();
+            if (!user.isEmailVerified()) {
+                response.put("status", -2);
+                response.put("error", "Email Unverified.");
+                response.put("errormsg", "needVerifiedEmail");
+                return Response.ok(response, APPLICATION_JSON_TYPE).build();
             } else {
                 user.removeAttribute("phoneNumber");
-                return Response.ok().entity("{\"status\":1}").build();
+                return Response.ok().entity(ENTITY_SUCCESS).build();
             }
-        } catch(BadRequestException | NotAuthorizedException e){
-            JSONObject response = new JSONObject();
+        } catch (BadRequestException | NotAuthorizedException e) {
             response.put("status", -1);
             response.put("error", e.getMessage());
-            return Response.ok().entity(response.toString()).build();
+            response.put("errormsg", "needAuth");
+            return Response.ok(response, APPLICATION_JSON_TYPE).build();
         }
     }
 }

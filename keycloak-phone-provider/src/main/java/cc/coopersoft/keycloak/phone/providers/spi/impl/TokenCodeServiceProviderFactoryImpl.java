@@ -7,14 +7,16 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 
 public class TokenCodeServiceProviderFactoryImpl implements TokenCodeServiceProviderFactory {
+    private Config.Scope config;
 
     @Override
     public TokenCodeService create(KeycloakSession session) {
-        return new TokenCodeServiceImpl(session);
+        return new TokenCodeServiceImpl(session, config);
     }
 
     @Override
     public void init(Config.Scope scope) {
+        this.config = scope;
     }
 
     @Override
@@ -27,6 +29,6 @@ public class TokenCodeServiceProviderFactoryImpl implements TokenCodeServiceProv
 
     @Override
     public String getId() {
-        return "TokenCodeServiceProviderFactoryImpl";
+        return "default";
     }
 }

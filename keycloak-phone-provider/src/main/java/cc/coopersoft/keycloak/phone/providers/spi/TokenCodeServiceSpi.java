@@ -13,7 +13,7 @@ public class TokenCodeServiceSpi implements Spi {
 
     @Override
     public String getName() {
-        return "tokenCode";
+        return "tokenCodeService";
     }
 
     @Override
