@@ -13,7 +13,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
-        <version.keycloak>15.0.1</version.keycloak>
+        <version.keycloak>15.0.2</version.keycloak>
         <version.phone.provider>1.1</version.phone.provider>
 
         <maven.compiler.source>1.8</maven.compiler.source>
@@ -35,7 +35,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.14</version>
+            <version>1.18.20</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
