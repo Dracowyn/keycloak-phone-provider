@@ -28,7 +28,7 @@
 
 ## 兼容性
 
-最初是使用11.0.3版本的Keycloak作为基线开发的，未测试其他非默认的用户存储，如Kerberos或LDAP。
+最初是使用16.1.0版本的Keycloak作为基线开发的，未测试其他非默认的用户存储，如Kerberos或LDAP。
 
 ## 使用方法
 
@@ -163,22 +163,32 @@ Set Registration Flow to 'Registration fast by phone'
 Under Realm Settings > Themes
 Set Login Theme as 'phone'
 
+## Authentication settings
+### Browser With Phone
+![](https://i.imgur.com/5UTcWXN.png)
+
+### Registration With Phone
+![](https://i.imgur.com/vQT4gSm.png)
+
+### Reset Credentials With Phone
+![](https://i.imgur.com/R7cul0l.png)
+
 test:
-http://<addr>/auth/realms/<realm name>/protocol/openid-connect/registrations?client_id=<client id>&response_type=code&scope=openid%20email&redirect_uri=<redirect_uri>
+```http://<addr>/auth/realms/<realm name>/protocol/openid-connect/registrations?client_id=<client id>&response_type=code&scope=openid%20email&redirect_uri=<redirect_uri>```
 
 
 **About the API endpoints:** 
 
 You'll get 2 extra endpoints that are useful to do the verification from a custom application.
 
-  + GET /auth/realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234 (To request a number verification. No auth required.)
-  + POST /auth/realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234&code=123456 (To verify the process. User must be authenticated.)
+  + ```GET /auth/realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234``` (To request a number verification. No auth required.)
+  + ```POST /auth/realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234&code=123456``` (To verify the process. User must be authenticated.)
 
 You'll get 2 extra endpoints that are useful to do the access token from a custom application.
-  + GET /auth/realms/{realmName}/sms/authentication-code?phoneNumber=+5534990001234 (To request a number verification. No auth required.)
-  + POST /auth/realms/shuashua/protocol/openid-connect/token
-    Content-Type: application/x-www-form-urlencoded
-    grant_type=password&phone_number=$PHONE_NUMBER&code=$VERIFICATION_CODE&client_id=$CLIENT_ID&client_secret=CLIENT_SECRECT
+  + ```GET /auth/realms/{realmName}/sms/authentication-code?phoneNumber=+5534990001234``` (To request a number verification. No auth required.)
+  + ```POST /auth/realms/shuashua/protocol/openid-connect/token```
+    ```Content-Type: application/x-www-form-urlencoded```
+    ```grant_type=password&phone_number=$PHONE_NUMBER&code=$VERIFICATION_CODE&client_id=$CLIENT_ID&client_secret=CLIENT_SECRECT```
 
 
 And then use Verification Code authentication flow with the code to obtain an access code.
