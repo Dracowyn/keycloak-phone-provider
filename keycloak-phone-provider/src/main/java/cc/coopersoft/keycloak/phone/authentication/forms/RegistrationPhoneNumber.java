@@ -5,13 +5,12 @@
  */
 package cc.coopersoft.keycloak.phone.authentication.forms;
 
-import cc.coopersoft.keycloak.phone.providers.spi.ConfigService;
-import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
-import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
-import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
+import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.authentication.FormAction;
@@ -121,7 +120,7 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
 			return;
 		}
 
-		if (!UserUtils.isDuplicatePhoneAllowed() && UserUtils.findUserByPhone(session.users(),context.getRealm(), phoneNumber) != null) {
+		if (UserUtils.isDuplicatePhoneAllowed() && UserUtils.findUserByPhone(session.users(),context.getRealm(), phoneNumber) != null) {
 			formData.remove(PhoneConstants.FIELD_PHONE_NUMBER);
 			context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
 			errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.PHONE_EXISTS));

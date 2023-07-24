@@ -12,7 +12,7 @@ public class TokenCodeJpaEntityProvider implements JpaEntityProvider {
     @Override
     public List<Class<?>> getEntities() {
         log.info("get TokenCodeEntity");
-        return Collections.<Class<?>>singletonList(TokenCodeEntity.class);
+        return Collections.singletonList(TokenCodeEntity.class);
     }
 
     @Override

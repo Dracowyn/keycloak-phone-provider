@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.keycloak.services.validation.Validation;
 
-import javax.persistence.criteria.CriteriaBuilder;
 import javax.ws.rs.core.MultivaluedMap;
 import java.util.Optional;
 

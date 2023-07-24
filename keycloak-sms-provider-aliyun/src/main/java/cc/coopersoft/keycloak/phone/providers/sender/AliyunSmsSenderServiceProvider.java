@@ -9,7 +9,6 @@ import com.aliyuncs.CommonResponse;
 import com.aliyuncs.DefaultAcsClient;
 import com.aliyuncs.IAcsClient;
 import com.aliyuncs.exceptions.ClientException;
-import com.aliyuncs.exceptions.ServerException;
 import com.aliyuncs.http.MethodType;
 import com.aliyuncs.profile.DefaultProfile;
 import org.jboss.logging.Logger;
@@ -62,7 +61,7 @@ public class AliyunSmsSenderServiceProvider implements MessageSenderService {
         try {
             CommonResponse response = client.getCommonResponse(request);
             System.out.println(response.getData());
-            return new MessageSendResult(1).setResendExpires(120).setExpires(expires);
+            return new MessageSendResult(1).setResendExpires(60).setExpires(expires);
         } catch (ClientException e) {
             e.printStackTrace();
             return new MessageSendResult(-1).setError(e.getErrCode(), e.getErrMsg());

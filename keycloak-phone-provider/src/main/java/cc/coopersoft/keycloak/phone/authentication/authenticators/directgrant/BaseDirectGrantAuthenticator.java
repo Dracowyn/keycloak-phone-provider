@@ -13,7 +13,6 @@ import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import java.util.Optional;
 
 public abstract class BaseDirectGrantAuthenticator implements Authenticator {
 

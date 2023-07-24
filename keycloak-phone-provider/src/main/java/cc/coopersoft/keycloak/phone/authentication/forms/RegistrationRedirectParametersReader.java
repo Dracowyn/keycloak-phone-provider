@@ -37,10 +37,10 @@ public class RegistrationRedirectParametersReader implements  FormActionFactory,
         configProperties.add(acceptParamName);
     }
 
-    private static AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
+    private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
             AuthenticationExecutionModel.Requirement.REQUIRED, AuthenticationExecutionModel.Requirement.DISABLED };
 
-    private static String[] QUERY_PARAM_BLACKLIST = {
+    private static final String[] QUERY_PARAM_BLACKLIST = {
             "execution",
             "session_code",
             "client_id",
@@ -148,7 +148,7 @@ public class RegistrationRedirectParametersReader implements  FormActionFactory,
                 paramNames = Optional.ofNullable(context.getAuthenticatorConfig().getConfig().get(PARAM_NAMES)).orElse("").split("##");
             }
             String[] finalParamNames = paramNames;
-            logger.info("allow query param names:" + finalParamNames);
+            logger.info("allow query param names:" + Arrays.toString(finalParamNames));
             url.queryParameterNames()
                     .stream()
                     .filter(v -> (finalParamNames != null && finalParamNames.length > 0) ? Arrays.asList(finalParamNames).contains(v) : !Validation.isBlank(v) && v.length() < 32 && Arrays.stream(QUERY_PARAM_BLACKLIST).noneMatch(item -> item.equals(v)) )

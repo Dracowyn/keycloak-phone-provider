@@ -1,6 +1,8 @@
 package cc.coopersoft.keycloak.phone.utils;
 
-import org.keycloak.models.*;
+import org.keycloak.models.RealmModel;
+import org.keycloak.models.UserModel;
+import org.keycloak.models.UserProvider;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -46,6 +48,6 @@ public class UserUtils {
 
     public static boolean isDuplicatePhoneAllowed(){
         //TODO isDuplicatePhoneAllowed
-        return false;
+        return true;
     }
 }

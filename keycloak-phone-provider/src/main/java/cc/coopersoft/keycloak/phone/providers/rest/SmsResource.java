@@ -3,8 +3,6 @@ package cc.coopersoft.keycloak.phone.providers.rest;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.spi.AreaCodeService;
 import cc.coopersoft.keycloak.phone.providers.spi.ConfigService;
-import cc.coopersoft.keycloak.phone.utils.JsonUtils;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakSession;
 
@@ -12,7 +10,6 @@ import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Response;
-
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;

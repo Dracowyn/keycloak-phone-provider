@@ -234,7 +234,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public void tokenValidated(UserModel user, PhoneNumber phoneNumber, String tokenCodeId) {
-        if(!UserUtils.isDuplicatePhoneAllowed()) { //解绑重复的手机号
+        if(UserUtils.isDuplicatePhoneAllowed()) { //解绑重复的手机号
             session.users().searchForUserByUserAttributeStream(session.getContext().getRealm(), "phoneNumber",
                     phoneNumber.getFullPhoneNumber()).filter(u -> !u.getId().equals(user.getId()))
                     .forEach(u -> {
@@ -256,13 +256,13 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         PhoneOtpCredentialProvider socp = (PhoneOtpCredentialProvider)
                 session.getProvider(CredentialProvider.class, PhoneOtpCredentialProviderFactory.PROVIDER_ID);
         if (socp.isConfiguredFor(getRealm(), user, PhoneOtpCredentialModel.TYPE)) {
-            Optional<CredentialModel> credentialOptional = session.userCredentialManager()
-                    .getStoredCredentialsByTypeStream(getRealm(), user, PhoneOtpCredentialModel.TYPE).findFirst();
+            Optional<CredentialModel> credentialOptional = user.credentialManager()
+                    .getStoredCredentialsByTypeStream(PhoneOtpCredentialModel.TYPE).findFirst();
             if(credentialOptional.isPresent()) {
                 CredentialModel credential = credentialOptional.get();
                 credential.setCredentialData("{\"phoneNumber\":\"" + user.getFirstAttribute("phoneNumber") + "\"}");
                 PhoneOtpCredentialModel credentialModel = PhoneOtpCredentialModel.createFromCredentialModel(credential);
-                session.userCredentialManager().updateCredential(getRealm(), user, credentialModel);
+                user.credentialManager().updateStoredCredential(credentialModel);
             }
         }
     }

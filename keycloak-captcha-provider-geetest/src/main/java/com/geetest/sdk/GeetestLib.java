@@ -55,24 +55,24 @@ public class GeetestLib {
     /**
      * 公钥
      */
-    private String geetest_id;
+    private final String geetest_id;
 
     /**
      * 私钥
      */
-    private String geetest_key;
+    private final String geetest_key;
 
     /**
      * 返回数据的封装对象
      */
-    private GeetestLibResult libResult;
+    private final GeetestLibResult libResult;
 
     /**
      * 调试开关，是否输出调试日志
      */
     private static final boolean IS_DEBUG = false;
 
-    private static final String API_URL = "http://api.geetest.com";
+    private static final String API_URL = "https://api.geetest.com";
 
     private static final String REGISTER_URL = "/register.php";
 
@@ -150,7 +150,7 @@ public class GeetestLib {
             JsonNode jsonObject = JsonLoader.fromString(resBody);
             origin_challenge = jsonObject.get("challenge").asText();
         } catch (Exception e) {
-            this.gtlog("requestRegister(): 验证初始化, 请求异常，后续流程走宕机模式, " + e.toString());
+            this.gtlog("requestRegister(): 验证初始化, 请求异常，后续流程走宕机模式, " + e);
             origin_challenge = "";
         }
         return origin_challenge;
@@ -191,7 +191,7 @@ public class GeetestLib {
      */
     public GeetestLibResult successValidate(String challenge, String validate, String seccode, Map<String, String> paramMap) {
         this.gtlog(String.format("successValidate(): 开始二次验证 正常模式, challenge=%s, validate=%s, seccode=%s.", challenge, validate, seccode));
-        if (!this.checkParam(challenge, validate, seccode)) {
+        if (this.checkParam(challenge, validate, seccode)) {
             this.libResult.setAll(0, "", "正常模式，本地校验，参数challenge、validate、seccode不可为空");
         } else {
             String response_seccode = this.requestValidate(challenge, validate, seccode, paramMap);
@@ -213,7 +213,7 @@ public class GeetestLib {
      */
     public GeetestLibResult failValidate(String challenge, String validate, String seccode) {
         this.gtlog(String.format("failValidate(): 开始二次验证 宕机模式, challenge=%s, validate=%s, seccode=%s.", challenge, validate, seccode));
-        if (!this.checkParam(challenge, validate, seccode)) {
+        if (this.checkParam(challenge, validate, seccode)) {
             this.libResult.setAll(0, "", "宕机模式，本地校验，参数challenge、validate、seccode不可为空.");
         } else {
             this.libResult.setAll(1, "", "");
@@ -241,7 +241,7 @@ public class GeetestLib {
             JsonNode jsonObject = JsonLoader.fromString(resBody);
             response_seccode = jsonObject.get("seccode").asText();
         } catch (Exception e) {
-            this.gtlog("requestValidate(): 二次验证 正常模式, 请求异常, " + e.toString());
+            this.gtlog("requestValidate(): 二次验证 正常模式, 请求异常, " + e);
             response_seccode = "";
         }
         return response_seccode;
@@ -251,7 +251,7 @@ public class GeetestLib {
      * 校验二次验证的三个参数，校验通过返回true，校验失败返回false
      */
     private boolean checkParam(String challenge, String validate, String seccode) {
-        return !(challenge == null || challenge.trim().isEmpty() || validate == null || validate.trim().isEmpty() || seccode == null || seccode.trim().isEmpty());
+        return challenge == null || challenge.trim().isEmpty() || validate == null || validate.trim().isEmpty() || seccode == null || seccode.trim().isEmpty();
     }
 
     /**
@@ -290,8 +290,6 @@ public class GeetestLib {
                 return sb.toString();
             }
             return "";
-        } catch (Exception e) {
-            throw e;
         } finally {
             if (inStream != null) {
                 inStream.close();
@@ -348,8 +346,6 @@ public class GeetestLib {
                 return sb.toString();
             }
             return "";
-        } catch (Exception e) {
-            throw e;
         } finally {
             if (inStream != null) {
                 inStream.close();
@@ -381,7 +377,7 @@ public class GeetestLib {
             }
             re_md5 = sb.toString();
         } catch (Exception e) {
-            this.gtlog("md5_encode(): 发生异常, " + e.toString());
+            this.gtlog("md5_encode(): 发生异常, " + e);
         }
         return re_md5;
     }
@@ -397,7 +393,7 @@ public class GeetestLib {
             messageDigest.update(value.getBytes(StandardCharsets.UTF_8));
             encodeStr = byte2Hex(messageDigest.digest());
         } catch (Exception e) {
-            this.gtlog("sha256_encode(): 发生异常, " + e.toString());
+            this.gtlog("sha256_encode(): 发生异常, " + e);
         }
         return encodeStr;
     }
@@ -432,11 +428,11 @@ public class GeetestLib {
             byte[] array = sha256_HMAC.doFinal(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             for (byte item : array) {
-                sb.append(Integer.toHexString((item & 0xFF) | 0x100).substring(1, 3));
+                sb.append(Integer.toHexString((item & 0xFF) | 0x100), 1, 3);
             }
             encodeStr = sb.toString();
         } catch (Exception e) {
-            this.gtlog("hmac_sha256_encode(): 发生异常, " + e.toString());
+            this.gtlog("hmac_sha256_encode(): 发生异常, " + e);
         }
         return encodeStr;
     }

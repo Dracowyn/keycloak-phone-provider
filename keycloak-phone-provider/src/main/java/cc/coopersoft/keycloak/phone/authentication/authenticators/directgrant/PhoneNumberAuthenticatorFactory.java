@@ -42,7 +42,7 @@ public class PhoneNumberAuthenticatorFactory implements AuthenticatorFactory, Co
         return SINGLETON;
     }
 
-    private static AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
+    private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
             AuthenticationExecutionModel.Requirement.REQUIRED,
     };
 
@@ -61,7 +61,7 @@ public class PhoneNumberAuthenticatorFactory implements AuthenticatorFactory, Co
         return configProperties;
     }
 
-    private static final List<ProviderConfigProperty> configProperties = new ArrayList<ProviderConfigProperty>();
+    private static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
 
     @Override
     public String getDisplayType() {

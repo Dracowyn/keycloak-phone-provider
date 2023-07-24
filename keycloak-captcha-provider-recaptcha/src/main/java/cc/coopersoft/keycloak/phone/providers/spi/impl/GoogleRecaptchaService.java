@@ -1,13 +1,12 @@
 package cc.coopersoft.keycloak.phone.providers.spi.impl;
 
 import cc.coopersoft.keycloak.phone.providers.spi.CaptchaService;
-
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.keycloak.Config;
 import org.keycloak.connections.httpclient.HttpClientProvider;

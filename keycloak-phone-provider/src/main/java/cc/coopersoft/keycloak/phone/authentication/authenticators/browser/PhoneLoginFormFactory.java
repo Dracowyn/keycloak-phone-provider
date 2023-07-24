@@ -1,19 +1,16 @@
 package cc.coopersoft.keycloak.phone.authentication.authenticators.browser;
 
 import org.keycloak.Config;
-import org.keycloak.OAuth2Constants;
 import org.keycloak.authentication.Authenticator;
 import org.keycloak.authentication.AuthenticatorFactory;
-import org.keycloak.authentication.DisplayTypeAuthenticatorFactory;
-import org.keycloak.authentication.authenticators.browser.UsernamePasswordForm;
-import org.keycloak.authentication.authenticators.console.ConsoleUsernamePasswordAuthenticator;
 import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.provider.ProviderConfigProperty;
+
 import java.util.List;
 
-public class PhoneLoginFormFactory implements AuthenticatorFactory, DisplayTypeAuthenticatorFactory {
+public class PhoneLoginFormFactory implements AuthenticatorFactory {
 
     public static final String PROVIDER_ID = "auth-phone-login-form";
     public static final PhoneLoginForm SINGLETON = new PhoneLoginForm();
@@ -23,12 +20,12 @@ public class PhoneLoginFormFactory implements AuthenticatorFactory, DisplayTypeA
         return SINGLETON;
     }
 
-    @Override
-    public Authenticator createDisplay(KeycloakSession session, String displayType) {
-        if (displayType == null) return SINGLETON;
-        if (!OAuth2Constants.DISPLAY_CONSOLE.equalsIgnoreCase(displayType)) return null;
-        return ConsoleUsernamePasswordAuthenticator.SINGLETON;
-    }
+//    @Override
+//    public Authenticator createDisplay(KeycloakSession session, String displayType) {
+//        if (displayType == null) return SINGLETON;
+//        if (!OAuth2Constants.DISPLAY_CONSOLE.equalsIgnoreCase(displayType)) return null;
+//        return ConsoleUsernamePasswordAuthenticator.SINGLETON;
+//    }
 
     @Override
     public void init(Config.Scope config) {

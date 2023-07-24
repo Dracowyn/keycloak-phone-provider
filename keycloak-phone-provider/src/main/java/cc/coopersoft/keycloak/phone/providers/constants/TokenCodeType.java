@@ -7,7 +7,7 @@ public enum TokenCodeType {
     REGISTRATION("registration"),
     LOGIN("login");
 
-    private String label;
+    private final String label;
 
     public String getLabel() {
         return label;

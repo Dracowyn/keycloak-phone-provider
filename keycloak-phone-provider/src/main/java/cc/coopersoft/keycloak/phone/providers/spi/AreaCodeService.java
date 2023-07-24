@@ -1,6 +1,5 @@
 package cc.coopersoft.keycloak.phone.providers.spi;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JavaType;
@@ -13,10 +12,12 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.provider.Provider;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.nio.file.Files;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.stream.Stream;
 
 public class AreaCodeService implements Provider {
@@ -35,7 +36,7 @@ public class AreaCodeService implements Provider {
         if(areaCodeList != null) return areaCodeList;
 
         File configFile = new File(config.getAreaCodeConfig());
-        InputStream fs = new FileInputStream(configFile);
+        InputStream fs = Files.newInputStream(configFile.toPath());
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             JavaType listType = objectMapper.getTypeFactory().constructParametricType(List.class, AreaCodeData.class);
@@ -59,7 +60,7 @@ public class AreaCodeService implements Provider {
         } catch (IOException ex){
             logger.error(ex);
         }
-        return Collections.EMPTY_LIST.stream();
+        return Stream.empty();
     }
 
     public boolean isAreaCodeAllowed(int areaCode) {

@@ -7,10 +7,7 @@ import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.Time;
 import org.keycloak.credential.*;
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.models.UserCredentialModel;
-import org.keycloak.models.UserModel;
+import org.keycloak.models.*;
 
 public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCredentialModel>, CredentialInputValidator {
 
@@ -21,8 +18,9 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
         this.session = session;
     }
 
-    private UserCredentialStore getCredentialStore() {
-        return session.userCredentialManager();
+    private SubjectCredentialManager getCredentialStore(UserModel userModel) {
+        return userModel.credentialManager();
+        //return session.userCredentialManager();
     }
 
     private TokenCodeService getTokenCodeService() {
@@ -37,7 +35,7 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
     @Override
     public boolean isConfiguredFor(RealmModel realm, UserModel user, String credentialType) {
         if (!supportsCredentialType(credentialType)) return false;
-        return getCredentialStore().getStoredCredentialsByTypeStream(realm, user, credentialType).count() > 0;
+        return getCredentialStore(user).getStoredCredentialsByTypeStream(credentialType).findAny().isPresent();
     }
 
     @Override
@@ -64,12 +62,12 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
         if (credential.getCreatedDate() == null) {
             credential.setCreatedDate(Time.currentTimeMillis());
         }
-        return getCredentialStore().createCredential(realm, user, credential);
+        return getCredentialStore(user).createStoredCredential(credential);
     }
 
     @Override
     public boolean deleteCredential(RealmModel realm, UserModel user, String credentialId) {
-        return getCredentialStore().removeStoredCredential(realm, user, credentialId);
+        return getCredentialStore(user).removeStoredCredentialById(credentialId);
     }
 
     @Override

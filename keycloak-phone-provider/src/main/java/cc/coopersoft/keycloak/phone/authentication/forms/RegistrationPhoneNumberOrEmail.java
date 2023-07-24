@@ -131,7 +131,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
 			formData.remove(PhoneConstants.FIELD_EMAIL);
 			context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
 
-			if (!UserUtils.isDuplicatePhoneAllowed() &&
+			if (UserUtils.isDuplicatePhoneAllowed() &&
 					UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber) != null) {
 				formData.remove(PhoneConstants.FIELD_PHONE_NUMBER);
 				eventError = PHONE_IN_USE;
@@ -149,7 +149,9 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
 					errors.add(new FormMessage(PhoneConstants.FIELD_VERIFICATION_CODE,
 							PhoneConstants.SMS_CODE_MISMATCH));
 				}
-				context.getSession().setAttribute(PhoneConstants.FIELD_TOKEN_ID, tokenCode.getId());
+				if (tokenCode != null) {
+					context.getSession().setAttribute(PhoneConstants.FIELD_TOKEN_ID, tokenCode.getId());
+				}
 			}
 		} else if(credentialType != null && credentialType.equals(PhoneConstants.CREDENTIAL_TYPE_EMAIL)) {
 			//使用邮箱注册，验证电子邮箱
@@ -230,7 +232,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
 			user.setEmail(formData.getFirst(RegistrationPage.FIELD_EMAIL));
 
 			try {
-				context.getSession().userCredentialManager().updateCredential(context.getRealm(), user, UserCredentialModel.password(formData.getFirst("password"), false));
+				user.credentialManager().updateCredential(UserCredentialModel.password(formData.getFirst("password"), false));
 			} catch (Exception me) {
 				user.addRequiredAction(UserModel.RequiredAction.UPDATE_PASSWORD);
 			}

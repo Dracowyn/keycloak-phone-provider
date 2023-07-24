@@ -2,7 +2,6 @@ package cc.coopersoft.keycloak.phone.authentication.requiredactions;
 
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import org.jboss.logging.Logger;
-import org.keycloak.authentication.DisplayTypeRequiredActionFactory;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionFactory;
 import org.keycloak.authentication.RequiredActionProvider;
@@ -13,7 +12,7 @@ import org.keycloak.models.UserModel;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
 public class VerifyPhoneOrEmail extends VerifyEmail implements RequiredActionProvider,
-        RequiredActionFactory, DisplayTypeRequiredActionFactory {
+        RequiredActionFactory {
     public static String PROVIDER_ID = "VERIFY_PHONE_OR_EMAIL";
     private static final Logger logger = Logger.getLogger(VerifyPhoneOrEmail.class);
     private static final VerifyPhoneOrEmail instance = new VerifyPhoneOrEmail();

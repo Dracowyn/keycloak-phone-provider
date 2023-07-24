@@ -1,16 +1,15 @@
 package cc.coopersoft.keycloak.phone.providers.spi.impl;
 
 import cc.coopersoft.keycloak.phone.providers.constants.MessageSendResult;
-import cc.coopersoft.keycloak.phone.providers.spi.ConfigService;
-import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.exception.MessageSendException;
 import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
+import cc.coopersoft.keycloak.phone.providers.spi.ConfigService;
 import cc.coopersoft.keycloak.phone.providers.spi.MessageSenderService;
 import cc.coopersoft.keycloak.phone.providers.spi.PhoneMessageService;
+import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import org.jboss.logging.Logger;
-import org.keycloak.Config.Scope;
 import org.keycloak.models.KeycloakSession;
 
 import javax.ws.rs.ForbiddenException;
@@ -65,14 +64,14 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         getTokenCodeService().removeCode(phoneNumber, type);
 
         TokenCodeRepresentation token = TokenCodeRepresentation.forPhoneNumber(phoneNumber);
-
+        //logger.info(String.format("The code is %s", token.getCode()));
         try {
             result = session.getProvider(MessageSenderService.class, service)
                     .sendSmsMessage(type, phoneNumber, token.getCode(), tokenExpiresIn);
         } catch (MessageSendException e) {
             result = new MessageSendResult(-1).setError(e.getErrorCode(), e.getErrorMessage());
         }
-
+        //result = new MessageSendResult(1).setResendExpires(120).setExpires(tokenExpiresIn);
         if(result.ok()){
             getTokenCodeService().persistCode(token, type, result);
             logger.info(String.format("Sent %s code to %s over %s", type.getLabel(), phoneNumber.getFullPhoneNumber(),

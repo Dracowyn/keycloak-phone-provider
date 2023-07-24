@@ -19,10 +19,7 @@ public class ResetCredentialEmailWithPhone extends ResetCredentialEmail {
     }
 
     protected boolean configuredFor(AuthenticationFlowContext context) {
-        if (context.getAuthenticationSession().getAuthNote(ResetCredentialWithPhone.NOT_SEND_EMAIL) == null) {
-            return true;
-        }
-        return false;
+        return context.getAuthenticationSession().getAuthNote(ResetCredentialWithPhone.NOT_SEND_EMAIL) == null;
     }
 
     @Override

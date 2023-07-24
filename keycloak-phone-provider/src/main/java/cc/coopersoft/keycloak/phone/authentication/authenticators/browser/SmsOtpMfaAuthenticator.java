@@ -68,9 +68,9 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
 
     public void addCookie(AuthenticationFlowContext context, String name, String value, String path, String domain, String comment, int maxAge, boolean secure, boolean httpOnly) {
         HttpResponse response = context.getSession().getContext().getContextObject(HttpResponse.class);
-        StringBuffer cookieBuf = new StringBuffer();
-        ServerCookie.appendCookieValue(cookieBuf, 1, name, value, path, domain, comment, maxAge, secure, httpOnly, null);
-        String cookie = cookieBuf.toString();
+        StringBuilder cookieBuilder = new StringBuilder();
+        ServerCookie.appendCookieValue(cookieBuilder, 1, name, value, path, domain, comment, maxAge, secure, httpOnly, null);
+        String cookie = cookieBuilder.toString();
         response.getOutputHeaders().add(HttpHeaders.SET_COOKIE, cookie);
     }
 

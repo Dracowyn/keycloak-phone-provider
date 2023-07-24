@@ -9,15 +9,13 @@ import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
 
-import javax.ws.rs.core.MultivaluedMap;
-import java.util.ArrayList;
 import java.util.List;
 
 public class RegistrationLeast implements FormActionFactory, FormAction {
 
     public static final String PROVIDER_ID = "registration-least";
 
-    private static AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
+    private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
             AuthenticationExecutionModel.Requirement.REQUIRED, AuthenticationExecutionModel.Requirement.DISABLED };
 
 

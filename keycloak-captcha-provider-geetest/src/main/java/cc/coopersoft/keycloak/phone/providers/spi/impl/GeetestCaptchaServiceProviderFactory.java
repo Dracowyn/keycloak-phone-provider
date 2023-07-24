@@ -1,7 +1,7 @@
 package cc.coopersoft.keycloak.phone.providers.spi.impl;
 
-import cc.coopersoft.keycloak.phone.providers.spi.CaptchaServiceProviderFactory;
 import cc.coopersoft.keycloak.phone.providers.spi.CaptchaService;
+import cc.coopersoft.keycloak.phone.providers.spi.CaptchaServiceProviderFactory;
 import org.keycloak.Config;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
