@@ -19,13 +19,10 @@
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
 
-        <docker.image.name>coopersoft/keycloak-phone</docker.image.name>
-
     </properties>
 
     <modules>
         <module>keycloak-phone-provider</module>
-        <module>keycloak-phone-provider.resources</module>
         <module>keycloak-sms-provider-aliyun</module>
         <module>keycloak-captcha-provider-geetest</module>
         <module>keycloak-captcha-provider-recaptcha</module>
@@ -35,7 +32,7 @@
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.20</version>
+            <version>1.18.26</version>
             <scope>provided</scope>
         </dependency>
         <dependency>

@@ -60,7 +60,7 @@ public class VerificationCodeResource {
     @Path("")
     @Produces(APPLICATION_JSON)
     @Consumes(APPLICATION_JSON)
-    public Response setUserPhoneNumberJson(String reqBody){
+    public Response setUserPhoneNumberJson(String reqBody) {
         try {
             JsonNode jsonObject = JsonLoader.fromString(reqBody);
 
@@ -68,7 +68,7 @@ public class VerificationCodeResource {
                     jsonObject.get(PhoneConstants.FIELD_PHONE_NUMBER).asText(),
                     jsonObject.get(PhoneConstants.FIELD_VERIFICATION_CODE).asText());
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error(e.getMessage());
         }
         return Response.serverError().build();
     }
@@ -115,10 +115,10 @@ public class VerificationCodeResource {
     @Path("/unset")
     @Produces(APPLICATION_JSON)
     @Consumes({APPLICATION_JSON, APPLICATION_FORM_URLENCODED})
-    public Response unsetUserPhoneNumber(){
+    public Response unsetUserPhoneNumber() {
         HashMap<String, Object> response = new HashMap<>();
         ConfigService config = session.getProvider(ConfigService.class);
-        if (!config.isAllowUnset()){
+        if (!config.isAllowUnset()) {
             response.put("status", -3);
             response.put("error", "Not allowed to unset phone number");
             response.put("errormsg", "unsetPhoneNumberNotAllowed");

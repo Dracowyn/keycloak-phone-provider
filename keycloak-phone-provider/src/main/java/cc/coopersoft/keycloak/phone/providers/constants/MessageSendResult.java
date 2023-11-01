@@ -1,8 +1,11 @@
 package cc.coopersoft.keycloak.phone.providers.constants;
 
+import lombok.Getter;
+
 import java.time.Instant;
 import java.util.Date;
 
+@Getter
 public class MessageSendResult {
     private final int status;
     private String errorCode;
@@ -12,10 +15,6 @@ public class MessageSendResult {
 
     public MessageSendResult(int status){
         this.status = status;
-    }
-
-    public int getStatus(){
-        return this.status;
     }
 
     public boolean ok(){
@@ -28,14 +27,6 @@ public class MessageSendResult {
         return this;
     }
 
-    public String getErrorCode(){
-        return this.errorCode;
-    }
-
-    public String getErrorMessage(){
-        return this.errorMessage;
-    }
-
     public MessageSendResult setResendExpires(Date resendExpires){
         this.resendExpires = resendExpires;
         return this;
@@ -45,10 +36,6 @@ public class MessageSendResult {
         Instant now = Instant.now();
         this.resendExpires = Date.from(now.plusSeconds(resendExpires));
         return this;
-    }
-
-    public Date getResendExpires(){
-        return this.resendExpires;
     }
 
     public long getResendExpiresTime(){
@@ -64,10 +51,6 @@ public class MessageSendResult {
         Instant now = Instant.now();
         this.expires = Date.from(now.plusSeconds(expires));
         return this;
-    }
-
-    public Date getExpires(){
-        return this.expires;
     }
 
     public long getExpiresTime(){

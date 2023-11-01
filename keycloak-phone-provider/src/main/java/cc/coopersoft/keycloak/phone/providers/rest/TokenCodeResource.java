@@ -59,7 +59,7 @@ public class TokenCodeResource {
             }
             return this.sendTokenCode(formData);
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error(e.getMessage());
         }
         return Response.serverError().build();
     }
@@ -110,7 +110,7 @@ public class TokenCodeResource {
         logger.info(String.format("Requested %s code to %s", tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
         MessageSendResult result = session.getProvider(PhoneMessageService.class).sendTokenCode(phoneNumber, tokenCodeType);
 
-        if (result.ok()){
+        if (result.ok()) {
             retData.put("status", 1);
             retData.put("expires_in", result.getExpiresTime());
             retData.put("resend_expires", result.getResendExpiresTime());
@@ -156,7 +156,7 @@ public class TokenCodeResource {
                                     @QueryParam(PhoneConstants.FIELD_PHONE_NUMBER) String phoneNumberStr) {
         HashMap<String, Object> retData = new HashMap<>();
         PhoneNumber phoneNumber = new PhoneNumber(areaCode, phoneNumberStr);
-        if (phoneNumber.isEmpty()){
+        if (phoneNumber.isEmpty()) {
             retData.put("status", 0);
             retData.put("error", "Must inform a phone number.");
             retData.put("errormsg", "phoneNumberCannotBeEmpty");
@@ -171,7 +171,7 @@ public class TokenCodeResource {
             retData.put("status", 1);
             retData.put("resend_expire", resendExpire);
             return Response.ok(retData, APPLICATION_JSON_TYPE).build();
-        } catch(BadRequestException e){
+        } catch (BadRequestException e) {
             retData.put("status", 0);
             retData.put("error", e.getMessage());
             retData.put("errormsg", "serverError");
@@ -179,8 +179,8 @@ public class TokenCodeResource {
         }
     }
 
-    private boolean isTrustedClient(String id, String secret){
-        if(id == null || secret == null) return false;
+    private boolean isTrustedClient(String id, String secret) {
+        if (id == null || secret == null) return false;
         ClientModel client = this.session.getContext().getRealm().getClientByClientId(id);
         return client != null && client.validateSecret(secret);
     }

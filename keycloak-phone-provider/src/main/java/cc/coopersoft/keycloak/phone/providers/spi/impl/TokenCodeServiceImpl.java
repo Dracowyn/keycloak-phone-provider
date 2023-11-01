@@ -12,7 +12,7 @@ import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
-import org.keycloak.Config;
+import org.jetbrains.annotations.NotNull;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
 import org.keycloak.credential.CredentialModel;
 import org.keycloak.credential.CredentialProvider;
@@ -35,11 +35,9 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     private static final Logger logger = Logger.getLogger(TokenCodeServiceImpl.class);
     private final KeycloakSession session;
-    private final Config.Scope config;
 
-    TokenCodeServiceImpl(KeycloakSession session, Config.Scope config) {
+    TokenCodeServiceImpl(KeycloakSession session) {
         this.session = session;
-        this.config = config;
         if (getRealm() == null) {
             throw new IllegalStateException("The service cannot accept a session without a realm in its context.");
         }
@@ -66,21 +64,25 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                     .setParameter("type", tokenCodeType.name())
                     .getSingleResult();
 
-            TokenCodeRepresentation tokenCodeRepresentation = new TokenCodeRepresentation();
-
-            tokenCodeRepresentation.setId(entity.getId());
-            tokenCodeRepresentation.setPhoneNumber(entity.getPhoneNumber());
-            tokenCodeRepresentation.setCode(entity.getCode());
-            tokenCodeRepresentation.setType(entity.getType());
-            tokenCodeRepresentation.setCreatedAt(entity.getCreatedAt());
-            tokenCodeRepresentation.setExpiresAt(entity.getExpiresAt());
-            tokenCodeRepresentation.setResendExpiresAt(entity.getResendExpiresAt());
-            tokenCodeRepresentation.setConfirmed(entity.getConfirmed());
-
-            return tokenCodeRepresentation;
+            return getTokenCodeRepresentation(entity);
         } catch (NoResultException e) {
             return null;
         }
+    }
+
+    @NotNull
+    private static TokenCodeRepresentation getTokenCodeRepresentation(TokenCodeEntity entity) {
+        TokenCodeRepresentation tokenCodeRepresentation = new TokenCodeRepresentation();
+
+        tokenCodeRepresentation.setId(entity.getId());
+        tokenCodeRepresentation.setPhoneNumber(entity.getPhoneNumber());
+        tokenCodeRepresentation.setCode(entity.getCode());
+        tokenCodeRepresentation.setType(entity.getType());
+        tokenCodeRepresentation.setCreatedAt(entity.getCreatedAt());
+        tokenCodeRepresentation.setExpiresAt(entity.getExpiresAt());
+        tokenCodeRepresentation.setResendExpiresAt(entity.getResendExpiresAt());
+        tokenCodeRepresentation.setConfirmed(entity.getConfirmed());
+        return tokenCodeRepresentation;
     }
 
     @Override
@@ -95,7 +97,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                     .setParameter("type", tokenCodeType.name())
                     .getResultList();
 
-            if(entityList.size() > 0) {
+            if(!entityList.isEmpty()) {
                 for (TokenCodeEntity entity : entityList) {
                     em.remove(entity);
                 }

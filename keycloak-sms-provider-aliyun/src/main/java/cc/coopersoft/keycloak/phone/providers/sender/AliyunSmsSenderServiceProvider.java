@@ -28,14 +28,14 @@ public class AliyunSmsSenderServiceProvider implements MessageSenderService {
         client = new DefaultAcsClient(profile);
     }
 
-    private String getConfig(String realm, String type, String key){
+    private String getConfig(String realm, String type, String key) {
         realm = realm.toUpperCase();
         type = type.toUpperCase();
         key = key.toUpperCase();
         String value = config.get(realm + "_" + type + "_" + key);
-        if(value == null){
+        if (value == null) {
             value = config.get(type + "_" + key);
-            if(value == null){
+            if (value == null) {
                 value = config.get("DEFAULT_" + key);
             }
         }
@@ -63,7 +63,7 @@ public class AliyunSmsSenderServiceProvider implements MessageSenderService {
             System.out.println(response.getData());
             return new MessageSendResult(1).setResendExpires(60).setExpires(expires);
         } catch (ClientException e) {
-            e.printStackTrace();
+            logger.error(e.getMessage());
             return new MessageSendResult(-1).setError(e.getErrCode(), e.getErrMsg());
         }
     }

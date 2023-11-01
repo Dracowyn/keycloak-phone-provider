@@ -1,5 +1,8 @@
 package cc.coopersoft.keycloak.phone.providers.constants;
 
+import lombok.Getter;
+
+@Getter
 public enum TokenCodeType {
     VERIFY("verification"),
     OTP("authentication"),
@@ -8,10 +11,6 @@ public enum TokenCodeType {
     LOGIN("login");
 
     private final String label;
-
-    public String getLabel() {
-        return label;
-    }
 
     TokenCodeType(String label) {
         this.label  = label;

@@ -200,7 +200,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
 			eventError = Errors.INVALID_INPUT;
 			errors.add(new FormMessage(null, MISSING_PHONE_NUMBER_OR_EMAIL));
 		}
-		if (errors.size() > 0) {
+		if (!errors.isEmpty()) {
 			context.error(eventError);
 			formData.remove(RegistrationPage.FIELD_PASSWORD);
 			formData.remove(RegistrationPage.FIELD_PASSWORD_CONFIRM);
