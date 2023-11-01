@@ -60,7 +60,7 @@ public class AliyunSmsSenderServiceProvider implements MessageSenderService {
         request.putQueryParameter("TemplateParam", String.format("{\"code\":\"%s\"}", code));
         try {
             CommonResponse response = client.getCommonResponse(request);
-            System.out.println(response.getData());
+            logger.info(response.getData());
             return new MessageSendResult(1).setResendExpires(60).setExpires(expires);
         } catch (ClientException e) {
             logger.error(e.getMessage());

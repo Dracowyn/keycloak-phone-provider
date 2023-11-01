@@ -44,17 +44,17 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
     }
 
     @Override
-    public MessageSendResult sendTokenCode(PhoneNumber phoneNumber, TokenCodeType type){
+    public MessageSendResult sendTokenCode(PhoneNumber phoneNumber, TokenCodeType type) {
         if (getTokenCodeService().isAbusing(phoneNumber, type)) {
             throw new ForbiddenException("You requested the maximum number of messages the last hour");
         }
 
         MessageSendResult result;
 
-        if(!getTokenCodeService().canResend(phoneNumber, type)){
+        if (!getTokenCodeService().canResend(phoneNumber, type)) {
             TokenCodeRepresentation current = getTokenCodeService().currentProcess(phoneNumber, type);
             result = new MessageSendResult(-2).setError("RATE_LIMIT", "Please wait for minutes.");
-            if(current != null && current.getResendExpiresAt() != null){
+            if (current != null && current.getResendExpiresAt() != null) {
                 result.setResendExpires(current.getResendExpiresAt());
             }
             return result;
@@ -72,9 +72,9 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
             result = new MessageSendResult(-1).setError(e.getErrorCode(), e.getErrorMessage());
         }
         //result = new MessageSendResult(1).setResendExpires(120).setExpires(tokenExpiresIn);
-        if(result.ok()){
+        if (result.ok()) {
             getTokenCodeService().persistCode(token, type, result);
-            logger.info(String.format("Sent %s code to %s over %s", type.getLabel(), phoneNumber.getFullPhoneNumber(),
+            logger.info(String.format("Send %s SMS verification code: %s to %s over %s", type.getLabel(), token.getCode(), phoneNumber.getFullPhoneNumber(),
                     service));
         } else {
             logger.error(String.format("Message sending to %s failed with %s: %s",

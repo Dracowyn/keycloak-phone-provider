@@ -1,4 +1,10 @@
-# Keycloak Phone Provider
+# Keycloak (Quarkus 21.x.x) Phone Provider
+
+此项目原作者并不是我，项目源地址：https://github.com/cooperlyt/keycloak-phone-provider
+我们团队是在：https://github.com/cooperlyt/keycloak-phone-provider/tree/10.0.2
+也就是使用Keycloak的11.0.3版本作为基线开发的版本基础上为了做定制化需求做了二开，加入了人机验证geetest，国际区号选择功能并使其兼容了Keycloak 21版本。
+以下除了**安装教程**以外的翻译并不准确。
+本项目的开源前端以及文档的进一步完善等我有心思了再补（x
 
 + 支持短信验证码
 + 用短信验证码注册
@@ -20,7 +26,6 @@
 
 这个插件将使用两个用户属性：phoneNumberVerified（bool）和phoneNumber（str）
 许多用户可以有相同的电话号码，但只有一个人在验证过程结束时获得phoneNumberVerified = true
-这适应了预付费号码的使用情况，如果不活动的时间太长，这些号码会被回收。
 
 ## 客户端:
 
@@ -28,72 +33,46 @@
 
 ## 兼容性
 
-最初是使用16.1.0版本的Keycloak作为基线开发的，未测试其他非默认的用户存储，如Kerberos或LDAP。
+最初是使用21.1.2版本的Keycloak作为基线开发的，**未测试其他非默认的用户存储，如Kerberos或LDAP**。
 
 ## 使用方法
 
 **安装教程:**
- 
-  1. 将本项目内容下载到本地，执行mvn install进行安装，之后分别进入
-     keycloak-phone-provider、keycloak-sms-provider-dummy、以及所需的短信接口例如阿里云
-     执行mvn package编译打包，将module.xml以及后缀是-with-dependencies.jar
-     重命名删去-with-dependencies，并将原来不带-with-dependencies的删除；
-    之后将所得到的两个文件放入keycloak/modules/项目名（一个文件夹就是一个项目）/main 。
-  2. 打开你的standalone.xml，在keycloak系统的模块声明中包括基本模块和至少一个短信服务提供商。
-     添加属性以覆盖所选服务提供商的默认值和验证码的到期时间。
-  3. 启动Keycloak。
 
 i. 添加模块
-```xml
-<subsystem xmlns="urn:jboss:domain:keycloak-server:1.1">
-    <web-context>auth</web-context>
-    <providers>
-        <provider>classpath:${jboss.home.dir}/providers/*</provider>
-        <provider>module:keycloak-phone-provider</provider>
-        <provider>module:keycloak-sms-provider-dummy</provider>
-        <provider>module:keycloak-sms-provider-短信服务商</provider>
-    </providers>
-...
 ```
-ii. 设置短信服务商以及验证码发送时间间隔。
-```xml
-<spi name="phoneMessageService">
-    <provider name="default" enabled="true">
-        <properties>
-            <!-- 短信服务商使用小写，比如说aliyun -->
-            <property name="service" value="短信服务商"/>
-            <property name="tokenExpiresIn" value="60"/>
-        </properties>
-    </provider>
-</spi>
+编译后将target/providers目录中的文件拷贝到Keycloak根目录下的providers即可
+当然除了target/providers/keycloak-captcha-provider-recaptcha.jar（因为这个我没做适配）
+```
+在keycloak根目录下conf/keycloak.conf添加以下信息
+ii. 设置短信服务商。
+```
+# 短信发送服务商
+spi-phone-provider-config-sender-service=Aliyun
+# 验证码有效期
+spi-phone-provider-config-token-expires=300
+# 默认区号
+spi-phone-provider-config-default-areacode=86
+# 区号配置信息
+spi-phone-provider-config-areacode-config=${kc.home.dir:}/conf/areacode.json
+# 锁定区号
+spi-phone-provider-config-area-locked=false
 ```
 iii. 设置短信模板ID、短信签名、accessKeyID、accessSecret
-```xml
-<spi name="messageSenderService">
-    <!-- 短信服务商使用小写，比如说aliyun -->
-    <provider name="短信服务商" enabled="true">
-        <properties>
-            <!-- 短信模板 -->
-            <property name="DEFAULT_TEMPLATE" value="短信模板ID"/>
-            <!-- 短信签名 -->
-            <property name="DEFAULT_SIGNNAME" value="短信签名"/>
-            <property name="accessKeyId" value="accessKeyId"/>
-            <property name="accessSecret" value="accessSecret"/>
-        </properties>
-    </provider>
-</spi>
+```
+# 短信验证码模板
+spi-message-sender-service-aliyun-DEFAULT_TEMPLATE=
+# 短信签名
+spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=
+# 阿里云ID与Key
+spi-message-sender-service-aliyun-access-key-id=
+spi-message-sender-service-aliyun-access-secret=
 ```
 iiii. 设置极验id和key
-```xml
-<spi name="captchaService">
-    <provider name="geetest" enabled="true">
-        <properties>
-            <!-- 如果id为空则为宕机模式 -->
-            <property name="id" value="id"/>
-            <property name="key" value="key"/>
-        </properties>
-    </provider>
-</spi>
+```
+# 极验ID和key
+spi-captcha-service-geetest-id=
+spi-captcha-service-geetest-key=
 ```
 **OTP by Phone**
 
@@ -174,19 +153,19 @@ Set Login Theme as 'phone'
 ![](https://i.imgur.com/R7cul0l.png)
 
 test:
-```http://<addr>/auth/realms/<realm name>/protocol/openid-connect/registrations?client_id=<client id>&response_type=code&scope=openid%20email&redirect_uri=<redirect_uri>```
+```http://<addr>/realms/<realm name>/protocol/openid-connect/registrations?client_id=<client id>&response_type=code&scope=openid%20email&redirect_uri=<redirect_uri>```
 
 
 **About the API endpoints:** 
 
 You'll get 2 extra endpoints that are useful to do the verification from a custom application.
 
-  + ```GET /auth/realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234``` (To request a number verification. No auth required.)
-  + ```POST /auth/realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234&code=123456``` (To verify the process. User must be authenticated.)
+  + ```GET /realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234``` (To request a number verification. No auth required.)
+  + ```POST /realms/{realmName}/sms/verification-code?phoneNumber=+5534990001234&code=123456``` (To verify the process. User must be authenticated.)
 
 You'll get 2 extra endpoints that are useful to do the access token from a custom application.
-  + ```GET /auth/realms/{realmName}/sms/authentication-code?phoneNumber=+5534990001234``` (To request a number verification. No auth required.)
-  + ```POST /auth/realms/shuashua/protocol/openid-connect/token```
+  + ```GET /realms/{realmName}/sms/authentication-code?phoneNumber=+5534990001234``` (To request a number verification. No auth required.)
+  + ```POST /realms/shuashua/protocol/openid-connect/token```
     ```Content-Type: application/x-www-form-urlencoded```
     ```grant_type=password&phone_number=$PHONE_NUMBER&code=$VERIFICATION_CODE&client_id=$CLIENT_ID&client_secret=CLIENT_SECRECT```
 
