@@ -1,31 +1,28 @@
-# Keycloak (Quarkus 21.x.x) Phone Provider
+# Keycloak (Quarkus 22.x.x) Phone Provider
 
 此项目原作者并不是我，项目源地址：https://github.com/cooperlyt/keycloak-phone-provider
+
 我们团队是在：https://github.com/cooperlyt/keycloak-phone-provider/tree/10.0.2
-也就是使用Keycloak的11.0.3版本作为基线开发的版本基础上为了做定制化需求做了二开，加入了人机验证geetest，国际区号选择功能并使其兼容了Keycloak 21版本。
+
+也就是使用Keycloak的11.0.3版本作为基线开发的版本基础上为了做定制化需求做了二开，加入了人机验证geetest，国际区号选择功能并使其兼容了Keycloak 22版本。
+
 以下除了**安装教程**以外的翻译并不准确。
+
 本项目的开源前端以及文档的进一步完善等我有心思了再补（x
 
-+ 支持短信验证码
-+ 用短信验证码注册
-+ 通过短信验证码验证
-
-
-通过这个插件，**你可以使用发送手机短信验证码的方式来执行认证策略**。
-支持多个短信服务商，并采用的模块化部署。
-
-目前此插件能的事：
-+ 检查一个电话号码的所有权（表格和HTTP API）
-+ 使用短信作为2FA方法的第二个因素（浏览器流程）
-+ 通过短信验证码重置密码 (测试)
-+ 通过短信验证码认证（HTTP API）
-+ 每个人都通过验证码验证，自动创建用户(HTTP API)
-+ 使用手机号注册
-+ 只允许用手机号注册（用户名是电话号码）
-+ 注册添加用户属性与redirect_uri参数
-
-这个插件将使用两个用户属性：phoneNumberVerified（bool）和phoneNumber（str）
-许多用户可以有相同的电话号码，但只有一个人在验证过程结束时获得phoneNumberVerified = true
+## 主要功能
+~~+ 支持多种短信服务商~~
++ 支持国际区号选择
++ 支持人机验证
++ 支持短信验证码重置密码
++ 支持短信验证码认证
++ 支持自动创建用户
++ 支持手机号注册
++ 支持只允许用手机号注册
++ 支持注册添加用户属性与redirect_uri参数
++ 支持归属地检测
++ 支持自定义短信模板
++ 支持自定义短信签名
 
 ## 客户端:
 
@@ -74,6 +71,20 @@ iiii. 设置极验id和key
 spi-captcha-service-geetest-id=
 spi-captcha-service-geetest-key=
 ```
+
+iiii. 设置号码归属地检测
+```
+# 是否开启号码归属地检测
+spi-phone-provider-config-location-enable=true
+# 号码归属地检测APPCODE
+# 用的是阿里云的手机号码归属地查询服务
+# 购买地址：https://market.aliyun.com/products/57126001/cmapi022206.html
+spi-phone-provider-config-location-appcode=
+# 号码归属地黑名单（中文务必使用unicode编码）
+spi-phone-provider-config-location-black-list=\u865a\u62df
+```
+
+
 **OTP by Phone**
 
   in Authentication page, copy the browser flow and add a subflow to the forms, then adding `OTP Over SMS` as a

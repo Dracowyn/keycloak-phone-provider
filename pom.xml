@@ -7,7 +7,7 @@
     <groupId>cc.coopersoft</groupId>
     <artifactId>keycloak-phone-provider-parent</artifactId>
     <packaging>pom</packaging>
-    <version>1.1</version>
+    <version>1.2</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -15,10 +15,6 @@
         <maven.compiler.target>17</maven.compiler.target>
         <version.keycloak>21.1.2</version.keycloak>
         <version.phone.provider>1.2</version.phone.provider>
-
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
-
     </properties>
 
     <modules>
@@ -59,6 +55,12 @@
             <artifactId>keycloak-server-spi-private</artifactId>
             <version>${version.keycloak}</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpcore</artifactId>
+            <version>4.4.16</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
     <build>
