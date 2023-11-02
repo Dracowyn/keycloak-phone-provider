@@ -268,8 +268,11 @@ public class GeetestLib {
                 if (key == null || key.isEmpty() || paramMap.get(key) == null || paramMap.get(key).isEmpty()) {
                     continue;
                 }
-                paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
-                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
+//                 警告：使用记录为 @since 10+ 的 API
+//                 paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
+//                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
+                paramStr.append("&").append(URLEncoder.encode(key, "UTF-8"))
+                        .append("=").append(URLEncoder.encode(paramMap.get(key), "UTF-8"));
             }
             if (paramStr.length() != 0) {
                 paramStr.replace(0, 1, "?");
@@ -314,8 +317,11 @@ public class GeetestLib {
                 if (key == null || key.isEmpty() || paramMap.get(key) == null || paramMap.get(key).isEmpty()) {
                     continue;
                 }
-                paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
-                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
+//                警告：使用记录为 @since 10+ 的 API
+//                paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
+//                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
+                paramStr.append("&").append(URLEncoder.encode(key, "UTF-8"))
+                        .append("=").append(URLEncoder.encode(paramMap.get(key), "UTF-8"));
             }
             if (paramStr.length() != 0) {
                 paramStr.replace(0, 1, "");

@@ -12,7 +12,7 @@ import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakSession;
 
-import javax.ws.rs.ForbiddenException;
+import jakarta.ws.rs.ForbiddenException;
 
 public class PhoneMessageServiceImpl implements PhoneMessageService {
 
