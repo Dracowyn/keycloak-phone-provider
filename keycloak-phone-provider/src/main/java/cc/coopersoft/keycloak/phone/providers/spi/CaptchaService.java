@@ -3,7 +3,7 @@ package cc.coopersoft.keycloak.phone.providers.spi;
 import org.keycloak.provider.Provider;
 import org.keycloak.services.managers.AuthenticationManager;
 
-import javax.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.core.MultivaluedMap;
 
 public interface CaptchaService extends Provider {
     boolean verify(final MultivaluedMap<String, String> formParams, String user);
