@@ -1,4 +1,4 @@
-# Keycloak (Quarkus 22.x.x) Phone Provider
+# Keycloak (Quarkus 21.x.x) Phone Provider
 
 此项目原作者并不是我，项目源地址：https://github.com/cooperlyt/keycloak-phone-provider
 
