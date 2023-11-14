@@ -36,7 +36,7 @@ public class RegistrationPhoneAsUserNameCreation implements FormActionFactory, F
     public static final String PROVIDER_ID = "registration-phone-username-creation";
 
     private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
-            AuthenticationExecutionModel.Requirement.REQUIRED, AuthenticationExecutionModel.Requirement.DISABLED };
+            AuthenticationExecutionModel.Requirement.REQUIRED, AuthenticationExecutionModel.Requirement.DISABLED};
 
 
     @Override
@@ -69,7 +69,6 @@ public class RegistrationPhoneAsUserNameCreation implements FormActionFactory, F
     public boolean isUserSetupAllowed() {
         return false;
     }
-
 
 
     @Override
@@ -118,14 +117,14 @@ public class RegistrationPhoneAsUserNameCreation implements FormActionFactory, F
         PhoneNumber phoneNumber = new PhoneNumber(formData);
         context.getEvent().detail(Details.USERNAME, phoneNumber.getPhoneNumber());
 
-        if (phoneNumber.isEmpty()){
+        if (phoneNumber.isEmpty()) {
             errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.MISSING_PHONE_NUMBER));
             context.error(Errors.INVALID_REGISTRATION);
             context.validationError(formData, errors);
             return;
         }
 
-        if (UserUtils.isDuplicatePhoneAllowed() && UserUtils.findUserByPhone(context.getSession().users(),context.getRealm(),phoneNumber) != null) {
+        if (UserUtils.isDuplicatePhoneAllowed() && UserUtils.findUserByPhone(context.getSession().users(), context.getRealm(), phoneNumber) != null) {
             context.error(Errors.INVALID_REGISTRATION);
             formData.remove(PhoneConstants.FIELD_PHONE_NUMBER);
             errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.PHONE_EXISTS));

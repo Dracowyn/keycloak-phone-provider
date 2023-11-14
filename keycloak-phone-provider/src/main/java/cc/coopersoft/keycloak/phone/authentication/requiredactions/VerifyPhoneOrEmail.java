@@ -15,7 +15,7 @@ public class VerifyPhoneOrEmail extends VerifyEmail implements RequiredActionPro
         RequiredActionFactory {
     public static String PROVIDER_ID = "VERIFY_PHONE_OR_EMAIL";
     private static final Logger logger = Logger.getLogger(VerifyPhoneOrEmail.class);
-    private static final VerifyPhoneOrEmail instance = new VerifyPhoneOrEmail();
+    private static final VerifyPhoneOrEmail INSTANCE = new VerifyPhoneOrEmail();
 
     @Override
     public String getDisplayText() {
@@ -24,7 +24,7 @@ public class VerifyPhoneOrEmail extends VerifyEmail implements RequiredActionPro
 
     @Override
     public RequiredActionProvider create(KeycloakSession session) {
-        return instance;
+        return INSTANCE;
     }
 
     @Override
@@ -55,7 +55,7 @@ public class VerifyPhoneOrEmail extends VerifyEmail implements RequiredActionPro
 
     private boolean isUserPhoneNumberVerified(UserModel user) {
         String phoneNumber = user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER);
-        return phoneNumber != null && !phoneNumber.trim().equals("");
+        return phoneNumber != null && !phoneNumber.trim().isEmpty();
     }
 
     @Override

@@ -40,15 +40,7 @@ public class AuthenticationCodeAuthenticator extends BaseDirectGrantAuthenticato
     }
 
     private boolean validateVerificationCode(AuthenticationFlowContext context, PhoneNumber phoneNumber) {
-
         String code = getAuthenticationCode(context);
-
-//        String kind = null;
-//        AuthenticatorConfigModel authenticatorConfig = context.getAuthenticatorConfig();
-//        if (authenticatorConfig != null && authenticatorConfig.getConfig() != null) {
-//            kind = Optional.ofNullable(context.getAuthenticatorConfig().getConfig().get(AuthenticationCodeAuthenticatorFactory.KIND)).orElse("");
-//        }
-
         return context.getSession().getProvider(TokenCodeService.class)
                 .validateCode(context.getUser(), phoneNumber, code, TokenCodeType.OTP);
     }

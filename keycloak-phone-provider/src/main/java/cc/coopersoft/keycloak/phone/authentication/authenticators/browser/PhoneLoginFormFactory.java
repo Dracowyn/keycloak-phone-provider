@@ -20,13 +20,6 @@ public class PhoneLoginFormFactory implements AuthenticatorFactory {
         return SINGLETON;
     }
 
-//    @Override
-//    public Authenticator createDisplay(KeycloakSession session, String displayType) {
-//        if (displayType == null) return SINGLETON;
-//        if (!OAuth2Constants.DISPLAY_CONSOLE.equalsIgnoreCase(displayType)) return null;
-//        return ConsoleUsernamePasswordAuthenticator.SINGLETON;
-//    }
-
     @Override
     public void init(Config.Scope config) {
 

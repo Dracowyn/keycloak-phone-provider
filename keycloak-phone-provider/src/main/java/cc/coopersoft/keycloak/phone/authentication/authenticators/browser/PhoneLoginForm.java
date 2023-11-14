@@ -41,16 +41,18 @@ public class PhoneLoginForm extends AbstractFormAuthenticator implements Authent
                                  MultivaluedMap<String, String> formData) {
         LoginFormsProvider form = context.form()
                 .setExecution(context.getExecution().getId());
-        if (error != null) form.setError(error);
+        if (error != null) {
+            form.setError(error);
+        }
         return makeForm(form);
     }
 
-    protected Response makeForm(LoginFormsProvider form){
+    protected Response makeForm(LoginFormsProvider form) {
         MultivaluedMap<String, String> formData = new MultivaluedHashMap<>();
         return makeForm(form, formData);
     }
 
-    protected Response makeForm(LoginFormsProvider form, MultivaluedMap<String, String> formData){
+    protected Response makeForm(LoginFormsProvider form, MultivaluedMap<String, String> formData) {
         form.setAttribute("login", new LoginBean(formData));
         return form.createForm(PHONE_LOGIN_FORM_TPL);
     }
@@ -87,7 +89,7 @@ public class PhoneLoginForm extends AbstractFormAuthenticator implements Authent
             return false;
         }
         String rememberMe = inputData.getFirst("rememberMe");
-        boolean remember = rememberMe != null && rememberMe.equalsIgnoreCase("on");
+        boolean remember = "on".equalsIgnoreCase(rememberMe);
         if (remember) {
             context.getAuthenticationSession().setAuthNote(Details.REMEMBER_ME, "true");
             context.getEvent().detail(Details.REMEMBER_ME, "true");
@@ -102,7 +104,7 @@ public class PhoneLoginForm extends AbstractFormAuthenticator implements Authent
     @Override
     public void action(AuthenticationFlowContext context) {
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
-        if (!formData.containsKey(FIELD_LOGIN_TYPE) || !formData.getFirst(FIELD_LOGIN_TYPE).equals("phone")){
+        if (!formData.containsKey(FIELD_LOGIN_TYPE) || !formData.getFirst(FIELD_LOGIN_TYPE).equals("phone")) {
             context.attempted();
             return;
         }
@@ -120,7 +122,8 @@ public class PhoneLoginForm extends AbstractFormAuthenticator implements Authent
             return;
         }
         UserModel user = UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber);
-        if(user == null) { //用户不存在
+        //用户不存在
+        if (user == null) {
             context.challenge(challenge(context, USER_NOT_EXISTS, formData));
             return;
         }
@@ -130,13 +133,14 @@ public class PhoneLoginForm extends AbstractFormAuthenticator implements Authent
             return;
         }
         TokenCodeService tokenCodeService = getTokenCodeService(session);
-        if(!tokenCodeService.validateCode(user, phoneNumber, code, TokenCodeType.LOGIN)){ //验证码错误
+        //验证码错误
+        if (!tokenCodeService.validateCode(user, phoneNumber, code, TokenCodeType.LOGIN)) {
             context.challenge(challenge(context, PhoneConstants.SMS_CODE_MISMATCH, formData));
             return;
         }
 
         //一切OK，返回最终值
-        if(validateUser(context, user, formData)){
+        if (validateUser(context, user, formData)) {
             context.success();
         }
     }

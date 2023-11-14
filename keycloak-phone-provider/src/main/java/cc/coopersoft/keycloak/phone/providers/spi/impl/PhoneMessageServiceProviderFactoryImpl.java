@@ -13,7 +13,8 @@ public class PhoneMessageServiceProviderFactoryImpl implements PhoneMessageServi
     }
 
     @Override
-    public void init(Scope config) { }
+    public void init(Scope config) {
+    }
 
     @Override
     public void postInit(KeycloakSessionFactory keycloakSessionFactory) {

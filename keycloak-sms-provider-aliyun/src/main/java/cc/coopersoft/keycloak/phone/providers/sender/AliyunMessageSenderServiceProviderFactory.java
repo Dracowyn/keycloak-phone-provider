@@ -7,28 +7,28 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.KeycloakSessionFactory;
 
 public class AliyunMessageSenderServiceProviderFactory implements MessageSenderServiceProviderFactory {
-  private Config.Scope config;
+    private Config.Scope config;
 
-  @Override
-  public MessageSenderService create(KeycloakSession keycloakSession) {
-    return new AliyunSmsSenderServiceProvider(config, keycloakSession.getContext().getRealm());
-  }
+    @Override
+    public MessageSenderService create(KeycloakSession keycloakSession) {
+        return new AliyunSmsSenderServiceProvider(config, keycloakSession.getContext().getRealm());
+    }
 
-  @Override
-  public void init(Config.Scope config) {
-    this.config = config;
-  }
+    @Override
+    public void init(Config.Scope config) {
+        this.config = config;
+    }
 
-  @Override
-  public void postInit(KeycloakSessionFactory keycloakSessionFactory) {
-  }
+    @Override
+    public void postInit(KeycloakSessionFactory keycloakSessionFactory) {
+    }
 
-  @Override
-  public void close() {
-  }
+    @Override
+    public void close() {
+    }
 
-  @Override
-  public String getId() {
-    return "aliyun";
-  }
+    @Override
+    public String getId() {
+        return "aliyun";
+    }
 }

@@ -122,7 +122,8 @@ public class PhoneOrPasswordLoginForm extends AbstractUsernameFormAuthenticator 
             return;
         }
         UserModel user = UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber);
-        if(user == null) { //用户不存在
+        //用户不存在
+        if(user == null) {
             context.challenge(challenge(context, USER_NOT_EXISTS, formData));
             return;
         }
@@ -132,7 +133,8 @@ public class PhoneOrPasswordLoginForm extends AbstractUsernameFormAuthenticator 
             return;
         }
         TokenCodeService tokenCodeService = getTokenCodeService(session);
-        if(!tokenCodeService.validateCode(user, phoneNumber, code, TokenCodeType.LOGIN)){ //验证码错误
+        //验证码错误
+        if(!tokenCodeService.validateCode(user, phoneNumber, code, TokenCodeType.LOGIN)){
             context.challenge(challenge(context, PhoneConstants.SMS_CODE_MISMATCH, formData));
             return;
         }

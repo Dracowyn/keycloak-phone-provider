@@ -33,17 +33,36 @@ import static jakarta.ws.rs.core.MediaType.*;
 
 public class TokenCodeResource {
 
+    // 日志记录器
     private static final Logger logger = Logger.getLogger(TokenCodeResource.class);
+
+    // Keycloak会话
     protected final KeycloakSession session;
+
+    // TokenCode类型
     protected final TokenCodeType tokenCodeType;
+
+    // 认证结果
     private final AuthenticationManager.AuthResult auth;
 
+    /**
+     * TokenCodeResource构造函数
+     *
+     * @param session       Keycloak会话
+     * @param tokenCodeType TokenCode类型
+     */
     TokenCodeResource(KeycloakSession session, TokenCodeType tokenCodeType) {
         this.session = session;
         this.tokenCodeType = tokenCodeType;
         this.auth = new AppAuthManager().authenticateIdentityCookie(session, session.getContext().getRealm());
     }
 
+    /**
+     * 发送TokenCode的POST请求
+     *
+     * @param reqBody 请求体
+     * @return 响应
+     */
     @POST
     @NoCache
     @Path("")
@@ -64,6 +83,12 @@ public class TokenCodeResource {
         return Response.serverError().build();
     }
 
+    /**
+     * 发送TokenCode的POST请求
+     *
+     * @param formData 表单数据
+     * @return 响应
+     */
     @POST
     @NoCache
     @Path("")
@@ -79,6 +104,7 @@ public class TokenCodeResource {
             retData.put("errormsg", "phoneNumberCannotBeEmpty");
             return Response.ok(retData, APPLICATION_JSON_TYPE).build();
         }
+
         // 验证码
         if (!session.getProvider(CaptchaService.class).verify(formData, this.auth) &&
                 !isTrustedClient(formData.getFirst("client_id"), formData.getFirst("client_secret"))) {
@@ -87,6 +113,7 @@ public class TokenCodeResource {
             retData.put("errormsg", "captchaNotCompleted");
             return Response.ok(retData, APPLICATION_JSON_TYPE).build();
         }
+
         // 区号
         AreaCodeService areaCodeService = session.getProvider(AreaCodeService.class);
         if (!areaCodeService.isAreaCodeAllowed(phoneNumber.getAreaCodeInt())) {
@@ -122,6 +149,12 @@ public class TokenCodeResource {
         return Response.ok(retData, APPLICATION_JSON_TYPE).build();
     }
 
+    /**
+     * 获取Resend Expires的JSON响应
+     *
+     * @param reqBody 请求体
+     * @return 响应
+     */
     @POST
     @NoCache
     @Path("/resend-expires")
@@ -138,6 +171,13 @@ public class TokenCodeResource {
         return Response.serverError().build();
     }
 
+    /**
+     * 获取Resend Expires的POST请求
+     *
+     * @param areaCode    区号
+     * @param phoneNumber 电话号码
+     * @return 响应
+     */
     @POST
     @NoCache
     @Path("/resend-expires")
@@ -148,6 +188,13 @@ public class TokenCodeResource {
         return this.getResendExpire(areaCode, phoneNumber);
     }
 
+    /**
+     * 获取Resend Expires的GET请求
+     *
+     * @param areaCode       区号
+     * @param phoneNumberStr 电话号码
+     * @return 响应
+     */
     @GET
     @NoCache
     @Path("/resend-expires")
@@ -179,6 +226,13 @@ public class TokenCodeResource {
         }
     }
 
+    /**
+     * 判断是否为受信任的客户端
+     *
+     * @param id     客户端ID
+     * @param secret 客户端 secret
+     * @return true: 是信任的客户端; false: 不是信任的客户端
+     */
     private boolean isTrustedClient(String id, String secret) {
         if (id == null || secret == null) return false;
         ClientModel client = this.session.getContext().getRealm().getClientByClientId(id);

@@ -15,8 +15,8 @@ import java.util.List;
 public class SmsOtpMfaAuthenticatorFactory implements AuthenticatorFactory, ConfigurableAuthenticatorFactory {
 
     public final static String PROVIDER_ID = "sms-otp-authenticator";
-    private final static SmsOtpMfaAuthenticator instance = new SmsOtpMfaAuthenticator();
-    private static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
+    private final static SmsOtpMfaAuthenticator INSTANCE = new SmsOtpMfaAuthenticator();
+    private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     static {
         ProviderConfigProperty property;
@@ -25,7 +25,7 @@ public class SmsOtpMfaAuthenticatorFactory implements AuthenticatorFactory, Conf
         property.setLabel("Cookie Max Age");
         property.setType(ProviderConfigProperty.STRING_TYPE);
         property.setHelpText("Max age in seconds of the SMS_OTP_COOKIE.");
-        configProperties.add(property);
+        CONFIG_PROPERTIES.add(property);
     }
 
     @Override
@@ -60,12 +60,12 @@ public class SmsOtpMfaAuthenticatorFactory implements AuthenticatorFactory, Conf
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return configProperties;
+        return CONFIG_PROPERTIES;
     }
 
     @Override
     public Authenticator create(KeycloakSession keycloakSession) {
-        return instance;
+        return INSTANCE;
     }
 
     @Override

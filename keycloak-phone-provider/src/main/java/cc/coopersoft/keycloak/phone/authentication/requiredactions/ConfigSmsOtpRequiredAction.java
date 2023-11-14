@@ -32,28 +32,7 @@ public class ConfigSmsOtpRequiredAction implements RequiredActionProvider {
         TokenCodeService tokenCodeService = context.getSession().getProvider(TokenCodeService.class);
         PhoneNumber phoneNumber = new PhoneNumber(context.getHttpRequest().getDecodedFormParameters());
         String code = context.getHttpRequest().getDecodedFormParameters().getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
-        /*try {
-            tokenCodeService.validateCode(context.getUser(), phoneNumber, code);
-            PhoneOtpCredentialProvider socp = (PhoneOtpCredentialProvider) context.getSession()
-                    .getProvider(CredentialProvider.class, PhoneOtpCredentialProviderFactory.PROVIDER_ID);
-            socp.createCredential(context.getRealm(), context.getUser(), PhoneOtpCredentialModel.create(phoneNumber));
-            context.success();
-        } catch (BadRequestException e) {
-
-            Response challenge = context.form()
-                    .setError("noOngoingVerificationProcess")
-                    .createForm("login-sms-otp-config.ftl");
-            context.challenge(challenge);
-
-        } catch (ForbiddenException e) {
-
-            Response challenge = context.form()
-                    .setAttribute("phoneNumber", phoneNumber)
-                    .setError("verificationCodeDoesNotMatch")
-                    .createForm("login-update-phone-number.ftl");
-            context.challenge(challenge);
-        }*/
-        if(tokenCodeService.validateCode(context.getUser(), phoneNumber, code)){
+        if (tokenCodeService.validateCode(context.getUser(), phoneNumber, code)) {
             PhoneOtpCredentialProvider socp = (PhoneOtpCredentialProvider) context.getSession()
                     .getProvider(CredentialProvider.class, PhoneOtpCredentialProviderFactory.PROVIDER_ID);
             socp.createCredential(context.getRealm(), context.getUser(), PhoneOtpCredentialModel.create(phoneNumber));

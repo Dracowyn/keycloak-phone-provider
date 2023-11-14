@@ -17,11 +17,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-public class RegistrationRedirectParametersReader implements  FormActionFactory, FormAction {
+public class RegistrationRedirectParametersReader implements FormActionFactory, FormAction {
 
     private static final Logger logger = Logger.getLogger(RegistrationRedirectParametersReader.class);
 
-    private static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
+    private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     public static final String PROVIDER_ID = "registration-redirect-parameter";
 
@@ -34,11 +34,11 @@ public class RegistrationRedirectParametersReader implements  FormActionFactory,
         acceptParamName.setLabel("Accept query param");
         acceptParamName.setType(ProviderConfigProperty.MULTIVALUED_STRING_TYPE);
         acceptParamName.setHelpText("Registration query param accept names.");
-        configProperties.add(acceptParamName);
+        CONFIG_PROPERTIES.add(acceptParamName);
     }
 
     private static final AuthenticationExecutionModel.Requirement[] REQUIREMENT_CHOICES = {
-            AuthenticationExecutionModel.Requirement.REQUIRED, AuthenticationExecutionModel.Requirement.DISABLED };
+            AuthenticationExecutionModel.Requirement.REQUIRED, AuthenticationExecutionModel.Requirement.DISABLED};
 
     private static final String[] QUERY_PARAM_BLACKLIST = {
             "execution",
@@ -72,7 +72,7 @@ public class RegistrationRedirectParametersReader implements  FormActionFactory,
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return configProperties;
+        return CONFIG_PROPERTIES;
     }
 
     @Override
@@ -130,11 +130,9 @@ public class RegistrationRedirectParametersReader implements  FormActionFactory,
     public void success(FormContext context) {
 
 
-
-
         String redirectUri = context.getAuthenticationSession().getRedirectUri();
         logger.info("add user attribute form redirectUri:" + redirectUri);
-        if (Validation.isBlank(redirectUri)){
+        if (Validation.isBlank(redirectUri)) {
             logger.error("no referer. cant get param in keycloak version");
             return;
         }
@@ -151,7 +149,7 @@ public class RegistrationRedirectParametersReader implements  FormActionFactory,
             logger.info("allow query param names:" + Arrays.toString(finalParamNames));
             url.queryParameterNames()
                     .stream()
-                    .filter(v -> (finalParamNames != null && finalParamNames.length > 0) ? Arrays.asList(finalParamNames).contains(v) : !Validation.isBlank(v) && v.length() < 32 && Arrays.stream(QUERY_PARAM_BLACKLIST).noneMatch(item -> item.equals(v)) )
+                    .filter(v -> (finalParamNames != null && finalParamNames.length > 0) ? Arrays.asList(finalParamNames).contains(v) : !Validation.isBlank(v) && v.length() < 32 && Arrays.stream(QUERY_PARAM_BLACKLIST).noneMatch(item -> item.equals(v)))
 
                     .forEach(v -> user.setAttribute(v, url.queryParameterValues(v)));
 

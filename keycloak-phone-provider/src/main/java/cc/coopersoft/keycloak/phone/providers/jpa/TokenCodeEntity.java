@@ -73,10 +73,15 @@ public class TokenCodeEntity {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null) return false;
-        if (!(o instanceof TokenCodeEntity)) return false;
-        TokenCodeEntity that = (TokenCodeEntity) o;
+        if (this == o) {
+            return true;
+        }
+        if (o == null) {
+            return false;
+        }
+        if (!(o instanceof TokenCodeEntity that)) {
+            return false;
+        }
 
         return Objects.equals(id, that.id);
     }
