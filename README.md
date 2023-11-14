@@ -20,7 +20,7 @@
 + 支持手机号注册
 + 支持只允许用手机号注册
 + 支持注册添加用户属性与redirect_uri参数
-+ 支持归属地检测
++ 支持归属地黑名单检测
 + 支持自定义短信模板
 + 支持自定义短信签名
 
@@ -72,15 +72,15 @@ spi-captcha-service-geetest-id=
 spi-captcha-service-geetest-key=
 ```
 
-iiii. 设置号码归属地检测
+iiii. 设置号码归属地黑名单检测
 ```
-# 是否开启号码归属地检测
-spi-phone-provider-config-location-enable=true
+# 是否开启号码归属地黑名单检测
+spi-phone-provider-config-location-verify=true
 # 号码归属地检测APPCODE
 # 用的是阿里云的手机号码归属地查询服务
 # 购买地址：https://market.aliyun.com/products/57126001/cmapi022206.html
 spi-phone-provider-config-location-appcode=
-# 号码归属地黑名单（中文务必使用unicode编码）
+# 号码归属地黑名单（中文务必使用unicode编码）英文逗号分隔
 spi-phone-provider-config-location-black-list=\u865a\u62df
 ```
 
