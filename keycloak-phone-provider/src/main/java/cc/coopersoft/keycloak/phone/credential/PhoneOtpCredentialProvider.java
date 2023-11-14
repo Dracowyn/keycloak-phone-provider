@@ -34,7 +34,9 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
 
     @Override
     public boolean isConfiguredFor(RealmModel realm, UserModel user, String credentialType) {
-        if (!supportsCredentialType(credentialType)) return false;
+        if (!supportsCredentialType(credentialType)) {
+            return false;
+        }
         return getCredentialStore(user).getStoredCredentialsByTypeStream(credentialType).findAny().isPresent();
     }
 
@@ -44,10 +46,18 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
         PhoneNumber phoneNumber = new PhoneNumber(user.getFirstAttribute("phoneNumber"));
         String code = input.getChallengeResponse();
 
-        if (!(input instanceof UserCredentialModel)) return false;
-        if (!input.getType().equals(getType())) return false;
-        if (phoneNumber.isEmpty()) return false;
-        if (code == null) return false;
+        if (!(input instanceof UserCredentialModel)) {
+            return false;
+        }
+        if (!input.getType().equals(getType())) {
+            return false;
+        }
+        if (phoneNumber.isEmpty()) {
+            return false;
+        }
+        if (code == null) {
+            return false;
+        }
 
         return getTokenCodeService().validateCode(user, phoneNumber, code, TokenCodeType.OTP);
     }

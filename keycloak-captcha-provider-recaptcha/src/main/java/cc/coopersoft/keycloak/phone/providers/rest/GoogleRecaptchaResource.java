@@ -27,23 +27,26 @@ public class GoogleRecaptchaResource {
     public GoogleRecaptchaResource(KeycloakSession session) {
         this.session = session;
         this.auth = new AppAuthManager().authenticateIdentityCookie(session, session.getContext().getRealm());
-        if(this.auth == null){
+        if (this.auth == null) {
             this.auth = new AppAuthManager.BearerTokenAuthenticator(session).authenticate();
         }
     }
 
     private void setCrosHeader(Response.ResponseBuilder response,
                                final String requestMethod,
-                               final String requestHeaders, final String origin){
+                               final String requestHeaders, final String origin) {
         ClientModel client = this.session.getContext().getClient();
-        if(client != null) {
+        if (client != null) {
             Set<String> allowedOrigins = client.getWebOrigins();
             for (String allowedOrigin : allowedOrigins) {
-                if (RegexUtils.matchGlob(origin, allowedOrigin)) { //当前origin符合要求
-                    if (requestHeaders != null)
+                //当前origin符合要求
+                if (RegexUtils.matchGlob(origin, allowedOrigin)) {
+                    if (requestHeaders != null) {
                         response.header("Access-Control-Allow-Headers", requestHeaders);
-                    if (requestMethod != null)
+                    }
+                    if (requestMethod != null) {
                         response.header("Access-Control-Allow-Methods", requestMethod);
+                    }
                     response.header("Access-Control-Allow-Origin", allowedOrigin);
                     break;
                 }
@@ -55,9 +58,9 @@ public class GoogleRecaptchaResource {
     @Path("code")
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
-    public Response getVerificationCodes( @HeaderParam("Access-Control-Request-Method") final String requestMethod,
-                                          @HeaderParam("Access-Control-Request-Headers") final String requestHeaders,
-                                          @HeaderParam("Origin") final String origin ) {
+    public Response getVerificationCodes(@HeaderParam("Access-Control-Request-Method") final String requestMethod,
+                                         @HeaderParam("Access-Control-Request-Headers") final String requestHeaders,
+                                         @HeaderParam("Origin") final String origin) {
         CaptchaService captcha = this.session.getProvider(CaptchaService.class);
 
         String geetestCode = captcha.getFrontendKey(this.auth);
@@ -71,7 +74,7 @@ public class GoogleRecaptchaResource {
     public Response getVerificationCodesCros(
             @HeaderParam("Access-Control-Request-Method") final String requestMethod,
             @HeaderParam("Access-Control-Request-Headers") final String requestHeaders,
-            @HeaderParam("Origin") final String origin ) {
+            @HeaderParam("Origin") final String origin) {
         final Response.ResponseBuilder response = Response.ok();
         this.setCrosHeader(response, requestMethod, requestHeaders, origin);
         return response.build();

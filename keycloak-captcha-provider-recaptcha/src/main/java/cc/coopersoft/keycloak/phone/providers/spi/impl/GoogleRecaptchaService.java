@@ -31,9 +31,9 @@ public class GoogleRecaptchaService implements CaptchaService {
         this.session = session;
     }
 
-    private String getUserIdByAuthResult(AuthenticationManager.AuthResult user){
+    private String getUserIdByAuthResult(AuthenticationManager.AuthResult user) {
         String uid = "guest";
-        if(user != null){
+        if (user != null) {
             uid = user.getUser().getId();
         }
         return uid;
@@ -73,16 +73,16 @@ public class GoogleRecaptchaService implements CaptchaService {
     }
 
     @Override
-    public String getFrontendKey(AuthenticationManager.AuthResult user){
+    public String getFrontendKey(AuthenticationManager.AuthResult user) {
         return "";
     }
 
     @Override
-    public String getFrontendKey(String user){
+    public String getFrontendKey(String user) {
         return "";
     }
 
-    public void setConfig(Config.Scope config){
+    public void setConfig(Config.Scope config) {
         this.config = config;
     }
 

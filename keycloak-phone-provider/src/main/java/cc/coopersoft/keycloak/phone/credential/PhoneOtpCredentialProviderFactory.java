@@ -9,7 +9,7 @@ public class PhoneOtpCredentialProviderFactory implements CredentialProviderFact
     public final static String PROVIDER_ID = "sms-otp";
 
     @Override
-    public CredentialProvider create(KeycloakSession session) {
+    public CredentialProvider<?> create(KeycloakSession session) {
         return new PhoneOtpCredentialProvider(session);
     }
 

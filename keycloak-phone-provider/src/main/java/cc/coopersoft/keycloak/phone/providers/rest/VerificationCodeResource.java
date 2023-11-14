@@ -38,23 +38,6 @@ public class VerificationCodeResource {
         return session.getProvider(TokenCodeService.class);
     }
 
-    /*@POST
-    @NoCache
-    @Path("")
-    @Produces(APPLICATION_JSON)
-    public Response checkVerificationCode(@QueryParam("phone_number") String phoneNumber,
-                                          @QueryParam("code") String code) {
-
-        if (auth == null) throw new NotAuthorizedException("Bearer");
-        if (phoneNumber == null) throw new BadRequestException("Must inform a phone number");
-        if (code == null) throw new BadRequestException("Must inform a token code");
-
-        UserModel user = auth.getUser();
-        getTokenCodeService().validateCode(user, phoneNumber, code);
-
-        return Response.noContent().build();
-    }*/
-
     @POST
     @NoCache
     @Path("")
@@ -125,7 +108,9 @@ public class VerificationCodeResource {
             return Response.ok(response, APPLICATION_JSON_TYPE).build();
         }
         try {
-            if (auth == null) throw new NotAuthorizedException("Bearer");
+            if (auth == null) {
+                throw new NotAuthorizedException("Bearer");
+            }
 
             UserModel user = auth.getUser();
             if (!user.isEmailVerified()) {

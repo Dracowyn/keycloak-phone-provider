@@ -41,7 +41,7 @@ public class SmsResource {
             AreaCodeService areaCodeService = session.getProvider(AreaCodeService.class);
             List<AreaCodeService.AreaCodeData> areaCodeList = areaCodeService.getAreaCodeList();
             retData.put("areaCodeList", areaCodeList);
-        } catch (IOException e){
+        } catch (IOException e) {
             logger.error(e);
         }
         return Response.ok(retData, APPLICATION_JSON_TYPE).build();
@@ -73,7 +73,7 @@ public class SmsResource {
     }
 
     @Path("update-profile")
-    public VerificationCodeResource getVerificateCodeResource(){
+    public VerificationCodeResource getVerificateCodeResource() {
         return new VerificationCodeResource(session);
     }
 }

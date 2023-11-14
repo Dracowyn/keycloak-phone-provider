@@ -49,9 +49,12 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
     protected void setCookie(AuthenticationFlowContext context) {
 
         AuthenticatorConfigModel config = context.getAuthenticatorConfig();
-        int maxCookieAge = 60 * 60; // 1 hour
+        // 1 hour
+        int maxCookieAge = 60 * 60;
 
-        if (config != null) maxCookieAge = Integer.parseInt(config.getConfig().get("cookie.max.age"));
+        if (config != null) {
+            maxCookieAge = Integer.parseInt(config.getConfig().get("cookie.max.age"));
+        }
 
         URI uri = context.getUriInfo()
                 .getBaseUriBuilder()

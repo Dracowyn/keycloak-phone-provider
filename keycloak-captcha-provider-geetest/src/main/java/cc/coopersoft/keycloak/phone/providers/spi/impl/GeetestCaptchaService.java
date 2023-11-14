@@ -24,9 +24,9 @@ public class GeetestCaptchaService implements CaptchaService {
         this.session = session;
     }
 
-    private String getUserIdByAuthResult(AuthenticationManager.AuthResult user){
+    private String getUserIdByAuthResult(AuthenticationManager.AuthResult user) {
         String uid = "guest";
-        if(user != null){
+        if (user != null) {
             uid = user.getUser().getId();
         }
         return uid;
@@ -39,11 +39,13 @@ public class GeetestCaptchaService implements CaptchaService {
 
     @Override
     public boolean verify(final MultivaluedMap<String, String> formParams, String user) {
-        if(user == null) user = "unknow";
+        if (user == null) {
+            user = "unknow";
+        }
 
         String geetestId = this.config.get("id");
         String geetestKey = this.config.get("key");
-        if(geetestId == null || geetestKey == null){
+        if (geetestId == null || geetestKey == null) {
             //如果没有设置key就直接通过
             //出事了别怪我
             return true;
@@ -55,7 +57,7 @@ public class GeetestCaptchaService implements CaptchaService {
         String validate = formParams.getFirst(GeetestLib.GEETEST_VALIDATE);
         String seccode = formParams.getFirst(GeetestLib.GEETEST_SECCODE);
 
-        if(challenge == null || validate == null || seccode == null){
+        if (challenge == null || validate == null || seccode == null) {
             return false;
         }
 
@@ -76,36 +78,42 @@ public class GeetestCaptchaService implements CaptchaService {
     }
 
     @Override
-    public String getFrontendKey(AuthenticationManager.AuthResult user){
+    public String getFrontendKey(AuthenticationManager.AuthResult user) {
         return this.getFrontendKey(this.getUserIdByAuthResult(user));
     }
 
     @Override
-    public String getFrontendKey(String user){
-        if(user == null) user = "unknow";
+    public String getFrontendKey(String user) {
+        if (user == null) {
+            user = "unknow";
+        }
 
         String geetestId = this.config.get("id");
         String geetestKey = this.config.get("key");
-        if(geetestId == null || geetestKey == null){
+        if (geetestId == null || geetestKey == null) {
             return "{\"success\":0,\"message\": \"unset geetest id or key in your config.\"}";
         }
 
+        final var result = getGeetestLibResult(user, geetestId, geetestKey);
+        serverStatus = result.getStatus();
+        return result.getData();
+    }
+
+    private GeetestLibResult getGeetestLibResult(String user, String geetestId, String geetestKey) {
         KeycloakContext context = session.getContext();
         //生成极验的code
         GeetestLib gtLib = new GeetestLib(geetestId, geetestKey);
         String digestmod = "md5";
 
-        Map<String,String> paramMap = new HashMap<>();
+        Map<String, String> paramMap = new HashMap<>();
         paramMap.put("digestmod", digestmod);
         paramMap.put("user_id", user);
         paramMap.put("client_type", "web");
         paramMap.put("ip_address", context.getConnection().getRemoteAddr());
-        GeetestLibResult result = gtLib.register(digestmod, paramMap);
-        serverStatus = result.getStatus();
-        return result.getData();
+        return gtLib.register(digestmod, paramMap);
     }
 
-    public void setConfig(Config.Scope config){
+    public void setConfig(Config.Scope config) {
         this.config = config;
     }
 

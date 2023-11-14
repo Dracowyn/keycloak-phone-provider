@@ -8,7 +8,7 @@ import org.keycloak.models.KeycloakSessionFactory;
 
 public class ConfigSmsOtpRequiredActionFactory implements RequiredActionFactory {
 
-    private static final ConfigSmsOtpRequiredAction instance = new ConfigSmsOtpRequiredAction();
+    private static final ConfigSmsOtpRequiredAction INSTANCE = new ConfigSmsOtpRequiredAction();
 
     @Override
     public String getDisplayText() {
@@ -17,7 +17,7 @@ public class ConfigSmsOtpRequiredActionFactory implements RequiredActionFactory 
 
     @Override
     public RequiredActionProvider create(KeycloakSession session) {
-        return instance;
+        return INSTANCE;
     }
 
     @Override

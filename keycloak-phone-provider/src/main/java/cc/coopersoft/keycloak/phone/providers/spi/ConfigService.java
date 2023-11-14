@@ -43,7 +43,7 @@ public class ConfigService implements Provider {
      */
     public final String locationBlackList;
 
-    public ConfigService(Config.Scope config){
+    public ConfigService(Config.Scope config) {
         this.senderService = config.get("senderService", "dummy");
         this.tokenExpires = config.getInt("tokenExpires", 300);
         this.defaultAreaCode = config.getInt("defaultAreacode", 86);

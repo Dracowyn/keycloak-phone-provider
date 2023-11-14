@@ -165,6 +165,7 @@ public class HttpUtils {
 
     /**
      * Put String
+     *
      * @param host
      * @param path
      * @param method
@@ -195,6 +196,7 @@ public class HttpUtils {
 
     /**
      * Put stream
+     *
      * @param host
      * @param path
      * @param method
@@ -257,7 +259,7 @@ public class HttpUtils {
         if (null != querys) {
             StringBuilder sbQuery = new StringBuilder();
             for (Map.Entry<String, String> query : querys.entrySet()) {
-                if (0 < sbQuery.length()) {
+                if (!sbQuery.isEmpty()) {
                     sbQuery.append("&");
                 }
                 if (StringUtils.isBlank(query.getKey()) && !StringUtils.isBlank(query.getValue())) {
@@ -271,7 +273,7 @@ public class HttpUtils {
                     }
                 }
             }
-            if (0 < sbQuery.length()) {
+            if (!sbQuery.isEmpty()) {
                 sbUrl.append("?").append(sbQuery);
             }
         }
@@ -290,28 +292,45 @@ public class HttpUtils {
 
     private static void sslClient(HttpClient httpClient) {
         try {
-            SSLContext ctx = SSLContext.getInstance("TLS");
-            X509TrustManager tm = new X509TrustManager() {
+            // 创建一个“TLS”协议的SSL上下文
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+
+            // 创建一个自定义的X509TrustManager以信任所有证书
+            X509TrustManager trustManager = new X509TrustManager() {
+                @Override
                 public X509Certificate[] getAcceptedIssuers() {
                     return null;
                 }
-                public void checkClientTrusted(X509Certificate[] xcs, String str) {
 
+                @Override
+                public void checkClientTrusted(X509Certificate[] certs, String authType) {
+                    // 我们不执行任何客户端证书验证
                 }
-                public void checkServerTrusted(X509Certificate[] xcs, String str) {
 
+                @Override
+                public void checkServerTrusted(X509Certificate[] certs, String authType) {
+                    // 我们不执行任何服务器证书验证
                 }
             };
-            ctx.init(null, new TrustManager[] { tm }, null);
-            SSLSocketFactory ssf = new SSLSocketFactory(ctx);
-            ssf.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-            ClientConnectionManager ccm = httpClient.getConnectionManager();
-            SchemeRegistry registry = ccm.getSchemeRegistry();
-            registry.register(new Scheme("https", 443, ssf));
-        } catch (KeyManagementException ex) {
-            throw new RuntimeException(ex);
-        } catch (NoSuchAlgorithmException ex) {
-            throw new RuntimeException(ex);
+
+            // 使用自定义信任管理器初始化SSL上下文
+            sslContext.init(null, new TrustManager[]{trustManager}, null);
+
+            // 使用SSL上下文创建自定义的SSLSocketFactory
+            SSLSocketFactory sslSocketFactory = new SSLSocketFactory(sslContext);
+
+            // 绕过主机名验证（允许所有主机名）
+            sslSocketFactory.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
+
+            // 获取HttpClient的客户端连接管理器和方案注册表
+            ClientConnectionManager connectionManager = httpClient.getConnectionManager();
+            SchemeRegistry schemeRegistry = connectionManager.getSchemeRegistry();
+
+            // 为“https”方案的443端口注册自定义的SSLSocketFactory
+            schemeRegistry.register(new Scheme("https", 443, sslSocketFactory));
+        } catch (KeyManagementException | NoSuchAlgorithmException ex) {
+            // 将任何异常包装并重新抛出为运行时异常
+            throw new RuntimeException("定制SSL设置失败", ex);
         }
     }
 }

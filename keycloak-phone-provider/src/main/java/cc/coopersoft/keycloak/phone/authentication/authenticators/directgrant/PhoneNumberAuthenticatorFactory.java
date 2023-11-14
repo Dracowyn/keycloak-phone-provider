@@ -58,10 +58,10 @@ public class PhoneNumberAuthenticatorFactory implements AuthenticatorFactory, Co
 
     @Override
     public List<ProviderConfigProperty> getConfigProperties() {
-        return configProperties;
+        return CONFIG_PROPERTIES;
     }
 
-    private static final List<ProviderConfigProperty> configProperties = new ArrayList<>();
+    private static final List<ProviderConfigProperty> CONFIG_PROPERTIES = new ArrayList<>();
 
     @Override
     public String getDisplayType() {

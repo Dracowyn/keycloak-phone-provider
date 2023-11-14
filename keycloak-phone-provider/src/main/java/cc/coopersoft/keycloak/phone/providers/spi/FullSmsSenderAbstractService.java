@@ -12,11 +12,19 @@ public abstract class FullSmsSenderAbstractService implements MessageSenderServi
         this.realmDisplay = realmDisplay;
     }
 
+    /**
+     * 发送短信
+     *
+     * @param phoneNumber 手机号
+     * @param message     短信内容
+     * @return 发送结果
+     * @throws MessageSendException 发送异常
+     */
     public abstract MessageSendResult sendMessage(String phoneNumber, String message) throws MessageSendException;
 
 
-    public MessageSendResult sendSmsMessage(TokenCodeType type, String phoneNumber, String code , int expires) throws MessageSendException{
-        final String MESSAGE = String.format("[%s] - " + type.getLabel() + " code: %s, expires: %s minute ",realmDisplay , code, expires / 60);
-        return sendMessage(phoneNumber,MESSAGE);
+    public MessageSendResult sendSmsMessage(TokenCodeType type, String phoneNumber, String code, int expires) throws MessageSendException {
+        final String message = String.format("[%s] - " + type.getLabel() + " code: %s, expires: %s minute ", realmDisplay, code, expires / 60);
+        return sendMessage(phoneNumber, message);
     }
 }

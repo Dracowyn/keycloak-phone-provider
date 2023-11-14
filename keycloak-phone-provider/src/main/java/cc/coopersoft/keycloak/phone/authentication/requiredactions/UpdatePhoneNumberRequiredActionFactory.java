@@ -8,7 +8,7 @@ import org.keycloak.models.KeycloakSessionFactory;
 
 public class UpdatePhoneNumberRequiredActionFactory implements RequiredActionFactory {
 
-    private static final UpdatePhoneNumberRequiredAction instance = new UpdatePhoneNumberRequiredAction();
+    private static final UpdatePhoneNumberRequiredAction INSTANCE = new UpdatePhoneNumberRequiredAction();
 
     @Override
     public String getDisplayText() {
@@ -17,7 +17,7 @@ public class UpdatePhoneNumberRequiredActionFactory implements RequiredActionFac
 
     @Override
     public RequiredActionProvider create(KeycloakSession session) {
-        return instance;
+        return INSTANCE;
     }
 
     @Override

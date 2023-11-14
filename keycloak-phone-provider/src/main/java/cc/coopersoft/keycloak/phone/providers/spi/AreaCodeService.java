@@ -33,7 +33,9 @@ public class AreaCodeService implements Provider {
     }
 
     public List<AreaCodeData> getAreaCodeList() throws IOException {
-        if(areaCodeList != null) return areaCodeList;
+        if(areaCodeList != null) {
+            return areaCodeList;
+        }
 
         File configFile = new File(config.getAreaCodeConfig());
         InputStream fs = Files.newInputStream(configFile.toPath());

@@ -97,7 +97,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                     .setParameter("type", tokenCodeType.name())
                     .getResultList();
 
-            if(!entityList.isEmpty()) {
+            if (!entityList.isEmpty()) {
                 for (TokenCodeEntity entity : entityList) {
                     em.remove(entity);
                 }
@@ -122,7 +122,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                     .setParameter("type", tokenCodeType.name())
                     .getSingleResult();
 
-            if(entityList != null) {
+            if (entityList != null) {
                 Date resendExpiresAt = entityList.getResendExpiresAt();
                 return (resendExpiresAt == null || resendExpiresAt.before(new Date()));
             } else {
@@ -177,8 +177,12 @@ public class TokenCodeServiceImpl implements TokenCodeService {
     @Override
     public boolean validateCode(PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType) {
         TokenCodeRepresentation tokenCode = currentProcess(phoneNumber, tokenCodeType);
-        if (tokenCode == null) return false;
-        if (!tokenCode.getCode().equals(code)) return false;
+        if (tokenCode == null) {
+            return false;
+        }
+        if (!tokenCode.getCode().equals(code)) {
+            return false;
+        }
 
         removeCode(phoneNumber, tokenCodeType);
         return true;
@@ -192,28 +196,36 @@ public class TokenCodeServiceImpl implements TokenCodeService {
     @Override
     public boolean validateCode(UserModel user, PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType) {
         TokenCodeRepresentation tokenCode = currentProcess(phoneNumber, tokenCodeType);
-        if (tokenCode == null) return false;
-        if (!tokenCode.getCode().equals(code)) return false;
+        if (tokenCode == null) {
+            return false;
+        }
+        if (!tokenCode.getCode().equals(code)) {
+            return false;
+        }
         if (user.getAttributeStream("phoneNumber")
-                .noneMatch(p -> p.equals(phoneNumber.getFullPhoneNumber()))) return false;
+                .noneMatch(p -> p.equals(phoneNumber.getFullPhoneNumber()))) {
+            return false;
+        }
 
         removeCode(phoneNumber, tokenCodeType);
         return true;
     }
 
     @Override
-    public void setUserPhoneNumberByCode(UserModel user, PhoneNumber phoneNumber, String code){
+    public void setUserPhoneNumberByCode(UserModel user, PhoneNumber phoneNumber, String code) {
         TokenCodeType tokenCodeType = TokenCodeType.VERIFY;
         logger.info(String.format("valid %s , phone: %s, code: %s", tokenCodeType, phoneNumber.getFullPhoneNumber(),
                 code));
 
         TokenCodeRepresentation tokenCode = currentProcess(phoneNumber, tokenCodeType);
-        if (tokenCode == null)
+        if (tokenCode == null) {
             throw new BadRequestException(String.format("There is no valid ongoing %s process",
                     tokenCodeType.getLabel()));
+        }
 
-        if (!tokenCode.getCode().equals(code))
+        if (!tokenCode.getCode().equals(code)) {
             throw new ForbiddenException("Code does not match with expected value");
+        }
 
         logger.info(String.format("User %s correctly answered the %s code", user.getId(), tokenCodeType.getLabel()));
 
@@ -236,9 +248,10 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public void tokenValidated(UserModel user, PhoneNumber phoneNumber, String tokenCodeId) {
-        if(UserUtils.isDuplicatePhoneAllowed()) { //解绑重复的手机号
+        //解绑重复的手机号
+        if (UserUtils.isDuplicatePhoneAllowed()) {
             session.users().searchForUserByUserAttributeStream(session.getContext().getRealm(), "phoneNumber",
-                    phoneNumber.getFullPhoneNumber()).filter(u -> !u.getId().equals(user.getId()))
+                            phoneNumber.getFullPhoneNumber()).filter(u -> !u.getId().equals(user.getId()))
                     .forEach(u -> {
                         logger.info(String.format("User %s also has phone number %s. Un-verifying.", u.getId(),
                                 phoneNumber.getFullPhoneNumber()));
@@ -260,7 +273,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         if (socp.isConfiguredFor(getRealm(), user, PhoneOtpCredentialModel.TYPE)) {
             Optional<CredentialModel> credentialOptional = user.credentialManager()
                     .getStoredCredentialsByTypeStream(PhoneOtpCredentialModel.TYPE).findFirst();
-            if(credentialOptional.isPresent()) {
+            if (credentialOptional.isPresent()) {
                 CredentialModel credential = credentialOptional.get();
                 credential.setCredentialData("{\"phoneNumber\":\"" + user.getFirstAttribute("phoneNumber") + "\"}");
                 PhoneOtpCredentialModel credentialModel = PhoneOtpCredentialModel.createFromCredentialModel(credential);
@@ -271,14 +284,16 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public Date getResendExpires(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
-        if (this.canResend(phoneNumber, tokenCodeType))
+        if (this.canResend(phoneNumber, tokenCodeType)) {
             throw new BadRequestException(String.format("Resend timeout in %s process for %s is finished.",
                     tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
+        }
 
         TokenCodeRepresentation tokenCode = currentProcess(phoneNumber, tokenCodeType);
-        if (tokenCode == null)
+        if (tokenCode == null) {
             throw new BadRequestException(String.format("There is no valid %s in process for %s",
                     tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
+        }
         return tokenCode.getResendExpiresAt();
     }
 

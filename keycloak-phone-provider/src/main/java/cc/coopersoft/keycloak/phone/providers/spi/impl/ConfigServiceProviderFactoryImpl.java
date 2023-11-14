@@ -20,7 +20,8 @@ public class ConfigServiceProviderFactoryImpl implements ConfigServiceProviderFa
     }
 
     @Override
-    public void postInit(KeycloakSessionFactory keycloakSessionFactory) { }
+    public void postInit(KeycloakSessionFactory keycloakSessionFactory) {
+    }
 
     @Override
     public void close() {
