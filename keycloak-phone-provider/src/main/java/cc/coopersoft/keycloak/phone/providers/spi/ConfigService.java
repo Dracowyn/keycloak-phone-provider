@@ -50,9 +50,9 @@ public class ConfigService implements Provider {
         this.areaCodeConfig = config.get("areacodeConfig", "./areacode.json");
         this.areaLocked = config.getBoolean("areaLocked", false);
         this.allowUnset = config.getBoolean("allowUnset", true);
-        this.locationEnable = config.getBoolean("locationVerify", true);
-        this.locationAppcode = config.get("locationAppcode", "");
-        this.locationBlackList = config.get("locationBlackList", "");
+        this.locationEnable = config.getBoolean("locationVerify", false);
+        this.locationAppcode = config.get("locationAppcode", null);
+        this.locationBlackList = config.get("locationBlackList", null);
     }
 
     @Override
