@@ -2,6 +2,7 @@ package cc.coopersoft.keycloak.phone.utils;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
@@ -88,7 +89,7 @@ public class HttpUtils {
         }
 
         if (bodys != null) {
-            List<NameValuePair> nameValuePairList = new ArrayList<NameValuePair>();
+            List<NameValuePair> nameValuePairList = new ArrayList<>();
 
             for (String key : bodys.keySet()) {
                 nameValuePairList.add(new BasicNameValuePair(key, bodys.get(key)));
@@ -269,7 +270,7 @@ public class HttpUtils {
                     sbQuery.append(query.getKey());
                     if (!StringUtils.isBlank(query.getValue())) {
                         sbQuery.append("=");
-                        sbQuery.append(URLEncoder.encode(query.getValue(), "utf-8"));
+                        sbQuery.append(URLEncoder.encode(query.getValue(), StandardCharsets.UTF_8));
                     }
                 }
             }

@@ -31,18 +31,33 @@ import java.util.Map;
 
 import static javax.ws.rs.core.MediaType.*;
 
+/**
+ * TokenCodeResource
+ * 发送TokenCode的RESTful接口
+ *
+ * @author cooper
+ * @since 2020/10/30
+ */
 public class TokenCodeResource {
 
-    // 日志记录器
+    /**
+     * 日志记录器
+     */
     private static final Logger logger = Logger.getLogger(TokenCodeResource.class);
 
-    // Keycloak会话
+    /**
+     * Keycloak会话
+     */
     protected final KeycloakSession session;
 
-    // TokenCode类型
+    /**
+     * TokenCode类型
+     */
     protected final TokenCodeType tokenCodeType;
 
-    // 认证结果
+    /**
+     * 认证结果
+     */
     private final AuthenticationManager.AuthResult auth;
 
     /**
@@ -142,9 +157,10 @@ public class TokenCodeResource {
             retData.put("expires_in", result.getExpiresTime());
             retData.put("resend_expires", result.getResendExpiresTime());
         } else {
-            retData.put("status", 0);
-            retData.put("error", result.getErrorMessage());
-            retData.put("errormsg", "serverError");
+            // 不知道为什么这里当时为什么要写成固定的 @Author Dracowyn
+            retData.put("status", result.getStatus());
+            retData.put("error", result.getErrorCode());
+            retData.put("errormsg", result.getErrorMessage());
         }
         return Response.ok(retData, APPLICATION_JSON_TYPE).build();
     }
@@ -234,7 +250,9 @@ public class TokenCodeResource {
      * @return true: 是信任的客户端; false: 不是信任的客户端
      */
     private boolean isTrustedClient(String id, String secret) {
-        if (id == null || secret == null) return false;
+        if (id == null || secret == null) {
+            return false;
+        }
         ClientModel client = this.session.getContext().getRealm().getClientByClientId(id);
         return client != null && client.validateSecret(secret);
     }

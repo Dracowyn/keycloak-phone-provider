@@ -11,9 +11,9 @@ public class GeetestCaptchaServiceProviderFactory implements CaptchaServiceProvi
 
     @Override
     public CaptchaService create(KeycloakSession session) {
-        GeetestCaptchaService geetestCaptchaService = new GeetestCaptchaService(session);
-        geetestCaptchaService.setConfig(this.config);
-        return geetestCaptchaService;
+        GeetestCaptchaServiceImpl geetestCaptchaServiceImpl = new GeetestCaptchaServiceImpl(session);
+        geetestCaptchaServiceImpl.setConfig(this.config);
+        return geetestCaptchaServiceImpl;
     }
 
     @Override

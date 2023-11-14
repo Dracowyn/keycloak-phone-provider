@@ -8,11 +8,11 @@ import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.models.RealmModel;
 
-public class DummySmsSenderServiceProvider implements MessageSenderService {
+public class DummySmsSenderServiceProviderImpl implements MessageSenderService {
 
-    private static final Logger logger = Logger.getLogger(DummySmsSenderServiceProvider.class);
+    private static final Logger logger = Logger.getLogger(DummySmsSenderServiceProviderImpl.class);
 
-    public DummySmsSenderServiceProvider(Config.Scope config, RealmModel realm) {
+    public DummySmsSenderServiceProviderImpl(Config.Scope config, RealmModel realm) {
     }
 
 

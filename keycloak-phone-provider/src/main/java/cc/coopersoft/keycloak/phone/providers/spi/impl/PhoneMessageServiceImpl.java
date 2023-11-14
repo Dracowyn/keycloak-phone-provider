@@ -15,6 +15,14 @@ import org.keycloak.models.KeycloakSession;
 
 import javax.ws.rs.ForbiddenException;
 
+/**
+ * 短信验证码服务实现类
+ * 用于发送短信验证码
+ * 该类实现了{@link PhoneMessageService}接口
+ *
+ * @author cooper
+ * @since 2020/10/29
+ */
 public class PhoneMessageServiceImpl implements PhoneMessageService {
 
     /**
@@ -109,7 +117,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         // 判断是否可以重新发送短信验证码
         if (!getTokenCodeService().canResend(phoneNumber, type)) {
             TokenCodeRepresentation current = getTokenCodeService().currentProcess(phoneNumber, type);
-            result = new MessageSendResult(-2).setError("RATE_LIMIT", "Please wait for minutes.");
+            result = new MessageSendResult(-2).setError("rateTime", "Please wait for minutes.");
             if (current != null && current.getResendExpiresAt() != null) {
                 result.setResendExpires(current.getResendExpiresAt());
             }
@@ -120,13 +128,11 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         getTokenCodeService().removeCode(phoneNumber, type);
 
         TokenCodeRepresentation token = TokenCodeRepresentation.forPhoneNumber(phoneNumber);
-//        logger.info(String.format("The code is %s", token.getCode()));
         PhoneLocation phoneLocation = new PhoneLocation();
         // 判断是否启用归属地检测，并进行验证
         if (locationEnable && phoneLocation.verification(locationAppcode, phoneNumber, locationBlackList)) {
-            logger.warn("Illegal mobile phone number:" + phoneNumber.getFullPhoneNumber());
-//            result = new MessageSendResult(0).setError("ILLEGAL_PHONE", "This mobile phone number is not supported yet.");
-            throw new ForbiddenException("This mobile phone number is not supported yet.");
+            logger.warn("Illegal phone number:" + phoneNumber.getFullPhoneNumber());
+            result = new MessageSendResult(-1).setError("illegalPhoneNumber", "Illegal phone number");
         } else {
             try {
                 // 发送短信验证码
@@ -136,8 +142,6 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
                 result = new MessageSendResult(-1).setError(e.getErrorCode(), e.getErrorMessage());
             }
         }
-
-        // result = new MessageSendResult(1).setResendExpires(120).setExpires(tokenExpiresIn);
         if (result.ok()) {
             getTokenCodeService().persistCode(token, type, result);
             logger.info(String.format("Send %s SMS verification code: %s to %s over %s", type.getLabel(), token.getCode(), phoneNumber.getFullPhoneNumber(),

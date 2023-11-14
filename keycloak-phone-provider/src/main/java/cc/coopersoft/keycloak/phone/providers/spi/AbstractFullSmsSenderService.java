@@ -4,11 +4,11 @@ import cc.coopersoft.keycloak.phone.providers.constants.MessageSendResult;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.exception.MessageSendException;
 
-public abstract class FullSmsSenderAbstractService implements MessageSenderService {
+public abstract class AbstractFullSmsSenderService implements MessageSenderService {
 
     private final String realmDisplay;
 
-    public FullSmsSenderAbstractService(String realmDisplay) {
+    public AbstractFullSmsSenderService(String realmDisplay) {
         this.realmDisplay = realmDisplay;
     }
 

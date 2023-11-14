@@ -11,7 +11,7 @@ public class GoogleRecaptchaServiceProviderFactory implements CaptchaServiceProv
 
     @Override
     public CaptchaService create(KeycloakSession session) {
-        GoogleRecaptchaService recaptchaService = new GoogleRecaptchaService(session);
+        GoogleRecaptchaServiceImpl recaptchaService = new GoogleRecaptchaServiceImpl(session);
         recaptchaService.setConfig(config);
         return recaptchaService;
     }

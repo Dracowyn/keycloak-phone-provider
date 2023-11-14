@@ -30,7 +30,7 @@ public class SmsResource {
     @GET
     @Path("")
     @Produces(APPLICATION_JSON)
-    public Response getSMSConfig() {
+    public Response getSmsConfig() {
         ConfigService config = session.getProvider(ConfigService.class);
         HashMap<String, Object> retData = new HashMap<>();
         retData.put("tokenExpires", config.getTokenExpires());

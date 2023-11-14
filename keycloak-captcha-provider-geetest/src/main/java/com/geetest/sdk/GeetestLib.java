@@ -111,9 +111,9 @@ public class GeetestLib {
      */
     public static final String GEETEST_SERVER_STATUS_SESSION_KEY = "gt_server_status";
 
-    public GeetestLib(String geetest_id, String geetest_key) {
-        this.geetest_id = geetest_id;
-        this.geetest_key = geetest_key;
+    public GeetestLib(String geetestId, String geetestKey) {
+        this.geetest_id = geetestId;
+        this.geetest_key = geetestKey;
         this.libResult = new GeetestLibResult();
     }
 
@@ -273,6 +273,7 @@ public class GeetestLib {
                 if (key == null || key.isEmpty() || paramMap.get(key) == null || paramMap.get(key).isEmpty()) {
                     continue;
                 }
+
                 paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
                         .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
             }
@@ -321,6 +322,9 @@ public class GeetestLib {
                 if (key == null || key.isEmpty() || paramMap.get(key) == null || paramMap.get(key).isEmpty()) {
                     continue;
                 }
+//                警告：使用记录为 @since 10+ 的 API
+//                paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
+//                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
                 paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
                         .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
             }
@@ -432,11 +436,11 @@ public class GeetestLib {
     private String hmacSha256Encode(String value, String key) {
         String encodeStr = "";
         try {
-            Mac sha256HMAC = Mac.getInstance("HmacSHA256");
+            Mac sha256Hmac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8),
                     "HmacSHA256");
-            sha256HMAC.init(secretKey);
-            byte[] array = sha256HMAC.doFinal(value.getBytes(StandardCharsets.UTF_8));
+            sha256Hmac.init(secretKey);
+            byte[] array = sha256Hmac.doFinal(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             for (byte item : array) {
                 sb.append(Integer.toHexString((item & 0xFF) | 0x100), 1, 3);

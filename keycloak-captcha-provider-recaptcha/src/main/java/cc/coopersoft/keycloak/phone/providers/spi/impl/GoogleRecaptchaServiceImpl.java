@@ -21,13 +21,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-public class GoogleRecaptchaService implements CaptchaService {
+public class GoogleRecaptchaServiceImpl implements CaptchaService {
     public static final String G_RECAPTCHA_RESPONSE = "g-recaptcha-response";
 
     private final KeycloakSession session;
     private Config.Scope config;
 
-    public GoogleRecaptchaService(KeycloakSession session) {
+    public GoogleRecaptchaServiceImpl(KeycloakSession session) {
         this.session = session;
     }
 
