@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.fge.jackson.JsonLoader;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -151,7 +152,7 @@ public class GeetestLib {
         try {
             String resBody = this.httpGet(registerUrl, paramMap);
             this.gtLog(String.format("requestRegister(): 验证初始化, 与极验网络交互正常, 返回body=%s.", resBody));
-            JsonNode jsonObject = new ObjectMapper().readTree(resBody);
+            JsonNode jsonObject = JsonLoader.fromString(resBody);
             originChallenge = jsonObject.get("challenge").asText();
         } catch (Exception e) {
             this.gtLog("requestRegister(): 验证初始化, 请求异常，后续流程走宕机模式, " + e);
@@ -242,7 +243,7 @@ public class GeetestLib {
             String resBody = this.httpPost(validateUrl, paramMap);
             this.gtLog(String.format("requestValidate(): 二次验证 正常模式, 与极验网络交互正常, 返回body=%s.", resBody));
 
-            JsonNode jsonObject = new ObjectMapper().readTree(resBody);
+            JsonNode jsonObject = JsonLoader.fromString(resBody);
             responseSeccode = jsonObject.get("seccode").asText();
         } catch (Exception e) {
             this.gtLog("requestValidate(): 二次验证 正常模式, 请求异常, " + e);

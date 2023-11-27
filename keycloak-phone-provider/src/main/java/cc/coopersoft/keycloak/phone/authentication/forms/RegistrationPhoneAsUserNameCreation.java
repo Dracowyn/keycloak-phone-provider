@@ -155,7 +155,7 @@ public class RegistrationPhoneAsUserNameCreation implements FormActionFactory, F
         KeycloakSession session = context.getSession();
 
         UserProfileProvider profileProvider = session.getProvider(UserProfileProvider.class);
-        UserProfile profile = profileProvider.create(UserProfileContext.REGISTRATION, formData);
+        UserProfile profile = profileProvider.create(UserProfileContext.REGISTRATION_USER_CREATION, formData);
         UserModel user = profile.create();
 
         user.setEnabled(true);

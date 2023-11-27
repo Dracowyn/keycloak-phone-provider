@@ -5,7 +5,7 @@ import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.fge.jackson.JsonLoader;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.keycloak.models.KeycloakSession;
@@ -45,7 +45,7 @@ public class VerificationCodeResource {
     @Consumes(APPLICATION_JSON)
     public Response setUserPhoneNumberJson(String reqBody) {
         try {
-            JsonNode jsonObject = new ObjectMapper().readTree(reqBody);
+            JsonNode jsonObject = JsonLoader.fromString(reqBody);
 
             return this.setUserPhoneNumber(jsonObject.get(PhoneConstants.FIELD_AREA_CODE).asText(),
                     jsonObject.get(PhoneConstants.FIELD_PHONE_NUMBER).asText(),
