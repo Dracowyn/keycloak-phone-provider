@@ -10,7 +10,7 @@ import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.github.fge.jackson.JsonLoader;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.annotations.cache.NoCache;
 import org.keycloak.models.ClientModel;
@@ -70,7 +70,7 @@ public class TokenCodeResource {
     @Consumes(APPLICATION_JSON)
     public Response sendTokenCodeJson(String reqBody) {
         try {
-            JsonNode jsonObject = JsonLoader.fromString(reqBody);
+            JsonNode jsonObject = new ObjectMapper().readTree(reqBody);
             MultivaluedHashMap<String, String> formData = new MultivaluedHashMap<>();
             for (Iterator<Map.Entry<String, JsonNode>> it = jsonObject.fields(); it.hasNext(); ) {
                 Map.Entry<String, JsonNode> node = it.next();
@@ -162,7 +162,7 @@ public class TokenCodeResource {
     @Consumes(APPLICATION_JSON)
     public Response getResendExpireJson(String reqBody) {
         try {
-            JsonNode jsonObject = JsonLoader.fromString(reqBody);
+            JsonNode jsonObject = new ObjectMapper().readTree(reqBody);
             return this.getResendExpire(jsonObject.get(PhoneConstants.FIELD_AREA_CODE).asText(),
                     jsonObject.get(PhoneConstants.FIELD_PHONE_NUMBER).asText());
         } catch (IOException e) {
@@ -234,7 +234,9 @@ public class TokenCodeResource {
      * @return true: 是信任的客户端; false: 不是信任的客户端
      */
     private boolean isTrustedClient(String id, String secret) {
-        if (id == null || secret == null) return false;
+        if (id == null || secret == null) {
+            return false;
+        }
         ClientModel client = this.session.getContext().getRealm().getClientByClientId(id);
         return client != null && client.validateSecret(secret);
     }
