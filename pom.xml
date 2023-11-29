@@ -13,7 +13,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
-        <version.keycloak>21.1.2</version.keycloak>
+        <version.keycloak>23.0.1</version.keycloak>
         <version.phone.provider>1.2</version.phone.provider>
         <maven.resources.plugin.version>3.3.1</maven.resources.plugin.version>
         <maven.dependency.plugin.version>3.6.1</maven.dependency.plugin.version>
