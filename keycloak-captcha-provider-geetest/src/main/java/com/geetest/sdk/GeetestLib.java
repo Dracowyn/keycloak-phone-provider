@@ -10,6 +10,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.fge.jackson.JsonLoader;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -110,9 +111,9 @@ public class GeetestLib {
      */
     public static final String GEETEST_SERVER_STATUS_SESSION_KEY = "gt_server_status";
 
-    public GeetestLib(String geetest_id, String geetest_key) {
-        this.geetest_id = geetest_id;
-        this.geetest_key = geetest_key;
+    public GeetestLib(String geetestId, String geetestKey) {
+        this.geetest_id = geetestId;
+        this.geetest_key = geetestKey;
         this.libResult = new GeetestLibResult();
     }
 
@@ -151,7 +152,7 @@ public class GeetestLib {
         try {
             String resBody = this.httpGet(registerUrl, paramMap);
             this.gtLog(String.format("requestRegister(): 验证初始化, 与极验网络交互正常, 返回body=%s.", resBody));
-            JsonNode jsonObject = new ObjectMapper().readTree(resBody);
+            JsonNode jsonObject = JsonLoader.fromString(resBody);
             originChallenge = jsonObject.get("challenge").asText();
         } catch (Exception e) {
             this.gtLog("requestRegister(): 验证初始化, 请求异常，后续流程走宕机模式, " + e);
@@ -242,7 +243,7 @@ public class GeetestLib {
             String resBody = this.httpPost(validateUrl, paramMap);
             this.gtLog(String.format("requestValidate(): 二次验证 正常模式, 与极验网络交互正常, 返回body=%s.", resBody));
 
-            JsonNode jsonObject = new ObjectMapper().readTree(resBody);
+            JsonNode jsonObject = JsonLoader.fromString(resBody);
             responseSeccode = jsonObject.get("seccode").asText();
         } catch (Exception e) {
             this.gtLog("requestValidate(): 二次验证 正常模式, 请求异常, " + e);
@@ -272,11 +273,9 @@ public class GeetestLib {
                 if (key == null || key.isEmpty() || paramMap.get(key) == null || paramMap.get(key).isEmpty()) {
                     continue;
                 }
-//                 警告：使用记录为 @since 10+ 的 API
-//                 paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
-//                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
-                paramStr.append("&").append(URLEncoder.encode(key, "UTF-8"))
-                        .append("=").append(URLEncoder.encode(paramMap.get(key), "UTF-8"));
+
+                paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
+                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
             }
             if (!paramStr.isEmpty()) {
                 paramStr.replace(0, 1, "?");
@@ -326,8 +325,8 @@ public class GeetestLib {
 //                警告：使用记录为 @since 10+ 的 API
 //                paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
 //                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
-                paramStr.append("&").append(URLEncoder.encode(key, "UTF-8"))
-                        .append("=").append(URLEncoder.encode(paramMap.get(key), "UTF-8"));
+                paramStr.append("&").append(URLEncoder.encode(key, StandardCharsets.UTF_8))
+                        .append("=").append(URLEncoder.encode(paramMap.get(key), StandardCharsets.UTF_8));
             }
             if (!paramStr.isEmpty()) {
                 paramStr.replace(0, 1, "");
@@ -437,11 +436,11 @@ public class GeetestLib {
     private String hmacSha256Encode(String value, String key) {
         String encodeStr = "";
         try {
-            Mac sha256HMAC = Mac.getInstance("HmacSHA256");
+            Mac sha256Hmac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8),
                     "HmacSHA256");
-            sha256HMAC.init(secretKey);
-            byte[] array = sha256HMAC.doFinal(value.getBytes(StandardCharsets.UTF_8));
+            sha256Hmac.init(secretKey);
+            byte[] array = sha256Hmac.doFinal(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder();
             for (byte item : array) {
                 sb.append(Integer.toHexString((item & 0xFF) | 0x100), 1, 3);

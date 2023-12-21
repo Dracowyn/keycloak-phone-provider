@@ -11,7 +11,7 @@ public class DummyMessageSenderServiceProviderFactory implements MessageSenderSe
 
     @Override
     public MessageSenderService create(KeycloakSession keycloakSession) {
-        return new DummySmsSenderServiceProvider(config, keycloakSession.getContext().getRealm());
+        return new DummySmsSenderServiceProviderImpl(config, keycloakSession.getContext().getRealm());
     }
 
     @Override

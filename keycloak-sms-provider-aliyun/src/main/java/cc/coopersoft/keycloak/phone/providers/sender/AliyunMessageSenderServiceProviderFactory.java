@@ -11,7 +11,7 @@ public class AliyunMessageSenderServiceProviderFactory implements MessageSenderS
 
     @Override
     public MessageSenderService create(KeycloakSession keycloakSession) {
-        return new AliyunSmsSenderServiceProvider(config, keycloakSession.getContext().getRealm());
+        return new AliyunSmsSenderServiceProviderImpl(config, keycloakSession.getContext().getRealm());
     }
 
     @Override

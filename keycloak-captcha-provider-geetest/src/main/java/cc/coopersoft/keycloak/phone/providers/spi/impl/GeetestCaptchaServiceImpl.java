@@ -13,14 +13,14 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import java.util.HashMap;
 import java.util.Map;
 
-public class GeetestCaptchaService implements CaptchaService {
-    private static final Logger log = Logger.getLogger(GeetestCaptchaService.class);
+public class GeetestCaptchaServiceImpl implements CaptchaService {
+    private static final Logger log = Logger.getLogger(GeetestCaptchaServiceImpl.class);
     private static int serverStatus = 1;
 
     private final KeycloakSession session;
     private Config.Scope config;
 
-    public GeetestCaptchaService(KeycloakSession session) {
+    public GeetestCaptchaServiceImpl(KeycloakSession session) {
         this.session = session;
     }
 

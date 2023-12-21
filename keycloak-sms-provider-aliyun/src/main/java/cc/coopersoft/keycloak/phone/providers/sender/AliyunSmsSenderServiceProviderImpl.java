@@ -15,13 +15,13 @@ import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.models.RealmModel;
 
-public class AliyunSmsSenderServiceProvider implements MessageSenderService {
-    private static final Logger logger = Logger.getLogger(AliyunSmsSenderServiceProvider.class);
+public class AliyunSmsSenderServiceProviderImpl implements MessageSenderService {
+    private static final Logger logger = Logger.getLogger(AliyunSmsSenderServiceProviderImpl.class);
     private final Config.Scope config;
     private final RealmModel realm;
     private final IAcsClient client;
 
-    public AliyunSmsSenderServiceProvider(Config.Scope config, RealmModel realm) {
+    public AliyunSmsSenderServiceProviderImpl(Config.Scope config, RealmModel realm) {
         this.config = config;
         this.realm = realm;
         DefaultProfile profile = DefaultProfile.getProfile("cn-hangzhou", config.get("accessKeyId"), config.get("accessSecret"));
