@@ -1,4 +1,4 @@
-# Keycloak (Quarkus 21.x.x) Phone Provider
+# Keycloak (Quarkus 23.x.x) Phone Provider
 
 此项目原作者并不是我，项目源地址：https://github.com/cooperlyt/keycloak-phone-provider
 
@@ -30,7 +30,7 @@
 
 ## 兼容性
 
-最初是使用21.1.2版本的Keycloak作为基线开发的，**未测试其他非默认的用户存储，如Kerberos或LDAP**。
+只兼容Keycloak v23.x，其它版本测试不通过。
 
 ## 使用方法
 
