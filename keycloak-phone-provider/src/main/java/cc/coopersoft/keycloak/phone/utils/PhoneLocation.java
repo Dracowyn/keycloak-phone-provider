@@ -45,19 +45,21 @@ public class PhoneLocation {
             try {
                 // 发送GET请求并获取响应
                 HttpResponse response = HttpUtils.doGet(host, path, method, headers, query);
+
                 // 转换响应
                 String responseContent = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
-                // 打印响应信息
-                logger.info("Phone number:" + phoneNumber.getPhoneNumber() + " location data:" + responseContent);
 
-                boolean containsAll = false;
-                for (String blacklistedValue : blackList.split(",")) {
-                    if (responseContent.contains(blacklistedValue.trim())) {
-                        containsAll = true;
-                        break;
-                    }
-                }
-                return containsAll;
+                // 转换为Map
+                Map<String, Object> responseMap = new JsonUtils().decode(responseContent);
+
+                // 获取data中的isp
+                String isp = (String) ((Map<?, ?>) responseMap.get("data")).get("isp");
+
+                // 打印响应信息
+                logger.info("Phone number:" + phoneNumber.getPhoneNumber() + " ISP:" + isp + " location data:" + responseMap);
+
+                // 判断data中的isp是否在黑名单中
+                return blackList.contains(isp);
             } catch (Exception e) {
                 logger.error(e);
                 return false;
