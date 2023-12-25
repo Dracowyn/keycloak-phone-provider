@@ -21,6 +21,16 @@ public class PhoneLocation {
     private static final String API_HOST = "https://ec8a.api.huachen.cn";
     private static final String API_PATH = "/mobile";
 
+    /**
+     * 手机号归属地查询
+     *
+     * @param locationEnable 是否启用号码归属地检测
+     * @param appcode        号码归属地Appcode
+     * @param phoneNumber    手机号
+     * @param blackList      号码归属地黑名单
+     * @param session        Keycloak会话对象
+     * @return 是否在黑名单中
+     */
     public boolean verification(boolean locationEnable, String appcode, PhoneNumber phoneNumber, String blackList, KeycloakSession session) {
         if (!locationEnable || appcode == null) {
             return false;
@@ -46,6 +56,13 @@ public class PhoneLocation {
         }
     }
 
+    /**
+     * 创建请求
+     *
+     * @param appcode     号码归属地Appcode
+     * @param phoneNumber 手机号
+     * @return 请求对象
+     */
     private HttpRequest createRequest(String appcode, String phoneNumber) {
         String uri = API_HOST + API_PATH + "?mobile=" + phoneNumber;
         return HttpRequest.newBuilder()
@@ -55,10 +72,23 @@ public class PhoneLocation {
                 .build();
     }
 
+    /**
+     * 提取运营商
+     *
+     * @param responseMap 响应数据
+     * @return 运营商
+     */
     private String extractIsp(Map<String, Object> responseMap) {
         return (String) ((Map<?, ?>) responseMap.get("data")).get("isp");
     }
 
+    /**
+     * 是否在黑名单中
+     *
+     * @param isp       运营商
+     * @param blackList 黑名单
+     * @return 是否在黑名单中
+     */
     private boolean isBlacklisted(String isp, String blackList) {
         boolean isBlack = Stream.of(blackList.split(",")).anyMatch(item -> isp.trim().contains(item.trim()));
         if (isBlack) {
