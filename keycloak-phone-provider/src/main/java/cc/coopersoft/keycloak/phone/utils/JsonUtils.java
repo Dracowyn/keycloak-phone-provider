@@ -1,6 +1,7 @@
 package cc.coopersoft.keycloak.phone.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Map;
@@ -18,8 +19,8 @@ public class JsonUtils {
      *
      * @return JSON工具类单例实例
      */
-    public static JsonUtils getInstance(){
-        if(instance == null){
+    public synchronized JsonUtils getInstance() {
+        if (instance == null) {
             instance = new JsonUtils();
         }
         return instance;
@@ -28,7 +29,7 @@ public class JsonUtils {
     /**
      * JSON工具类构造方法
      */
-    public JsonUtils(){
+    public JsonUtils() {
         mapper = new ObjectMapper();
     }
 
@@ -41,5 +42,13 @@ public class JsonUtils {
      */
     public String encode(Map<String, Object> map) throws JsonProcessingException {
         return mapper.writeValueAsString(map);
+    }
+
+    /**
+     * 将JSON字符串转换为Map对象
+     */
+    public Map<String, Object> decode(String json) throws JsonProcessingException {
+        return mapper.readValue(json, new TypeReference<>() {
+        });
     }
 }
