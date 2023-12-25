@@ -102,7 +102,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
      * 发送短信验证码的方法
      *
      * @param phoneNumber 电话号码
-     * @param type 短信验证码类型
+     * @param type        短信验证码类型
      * @return 短信验证码发送结果
      */
     @Override
@@ -130,7 +130,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         TokenCodeRepresentation token = TokenCodeRepresentation.forPhoneNumber(phoneNumber);
         PhoneLocation phoneLocation = new PhoneLocation();
         // 判断是否启用归属地检测，并进行验证
-        if (locationEnable && phoneLocation.verification(locationAppcode, phoneNumber, locationBlackList)) {
+        if (phoneLocation.verification(locationEnable, locationAppcode, phoneNumber, locationBlackList, session)) {
             logger.warn("Illegal phone number:" + phoneNumber.getFullPhoneNumber());
             result = new MessageSendResult(-1).setError("illegalPhoneNumber", "Illegal phone number");
         } else {

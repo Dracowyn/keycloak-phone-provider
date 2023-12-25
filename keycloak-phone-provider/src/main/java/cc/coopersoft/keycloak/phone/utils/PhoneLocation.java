@@ -1,12 +1,14 @@
 package cc.coopersoft.keycloak.phone.utils;
 
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpResponse;
 import org.jboss.logging.Logger;
+import org.keycloak.models.KeycloakSession;
 
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * 手机号归属地查询
@@ -16,62 +18,52 @@ import java.util.Map;
  */
 public class PhoneLocation {
     private static final Logger logger = Logger.getLogger(PhoneLocation.class);
+    private static final String API_HOST = "https://ec8a.api.huachen.cn";
+    private static final String API_PATH = "/mobile";
 
-    /**
-     * 验证手机号是否在黑名单中
-     *
-     * @param appcode     秘钥
-     * @param phoneNumber 手机号
-     * @param blackList   黑名单
-     * @return true:在黑名单中，false:不在黑名单中
-     */
-    public boolean verification(String appcode, PhoneNumber phoneNumber, String blackList) {
-        if (appcode != null) {
-            // 定义请求的主机和路径
-            String host = "https://ec8a.api.huachen.cn";
-            String path = "/mobile";
-
-            // 设置请求方法为GET
-            String method = "GET";
-
-            // 设置请求头
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Authorization", "APPCODE " + appcode);
-
-            // 设置查询参数
-            Map<String, String> query = new HashMap<>();
-            query.put("mobile", phoneNumber.getPhoneNumber());
-
-            try {
-                // 发送GET请求并获取响应
-                HttpResponse response = HttpUtils.doGet(host, path, method, headers, query);
-
-                // 转换响应
-                String responseContent = IOUtils.toString(response.getEntity().getContent(), StandardCharsets.UTF_8);
-
-                // 转换为Map
-                Map<String, Object> responseMap = new JsonUtils().decode(responseContent);
-
-                // 获取data中的isp
-                String isp = (String) ((Map<?, ?>) responseMap.get("data")).get("isp");
-
-                // 打印响应信息
-                logger.info("Phone number:" + phoneNumber.getPhoneNumber() + " ISP:" + isp + " location data:" + responseMap);
-
-                // 判断是否在黑名单中
-                for (String item : blackList.split(",")) {
-                    if (isp.trim().contains(item.trim())) {
-                        logger.info("Match found in blacklist for ISP: " + item.trim());
-                        return true;
-                    }
-                }
-                return false;
-            } catch (Exception e) {
-                logger.error(e);
-                return false;
-            }
-        } else {
+    public boolean verification(boolean locationEnable, String appcode, PhoneNumber phoneNumber, String blackList, KeycloakSession session) {
+        if (!locationEnable || appcode == null) {
             return false;
         }
+
+        String userPhoneNumber = phoneNumber.getPhoneNumber();
+        String ip = session.getContext().getConnection().getRemoteAddr();
+
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = createRequest(appcode, userPhoneNumber);
+
+        try {
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            Map<String, Object> responseMap = new JsonUtils().decode(response.body());
+
+            String isp = extractIsp(responseMap);
+            logger.info("Phone number: " + userPhoneNumber + " ISP: " + isp + " IP address: " + ip + " location data: " + responseMap);
+
+            return isBlacklisted(isp, blackList);
+        } catch (Exception e) {
+            logger.error("Error during phone number verification", e);
+            return false;
+        }
+    }
+
+    private HttpRequest createRequest(String appcode, String phoneNumber) {
+        String uri = API_HOST + API_PATH + "?mobile=" + phoneNumber;
+        return HttpRequest.newBuilder()
+                .uri(URI.create(uri))
+                .header("Authorization", "APPCODE " + appcode)
+                .GET()
+                .build();
+    }
+
+    private String extractIsp(Map<String, Object> responseMap) {
+        return (String) ((Map<?, ?>) responseMap.get("data")).get("isp");
+    }
+
+    private boolean isBlacklisted(String isp, String blackList) {
+        boolean isBlack = Stream.of(blackList.split(",")).anyMatch(item -> isp.trim().contains(item.trim()));
+        if (isBlack) {
+            logger.info("Phone number is blacklisted: " + isp);
+        }
+        return isBlack;
     }
 }
