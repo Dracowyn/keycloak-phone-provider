@@ -58,8 +58,14 @@ public class PhoneLocation {
                 // 打印响应信息
                 logger.info("Phone number:" + phoneNumber.getPhoneNumber() + " ISP:" + isp + " location data:" + responseMap);
 
-                // 判断data中的isp是否在黑名单中
-                return blackList.contains(isp);
+                // 判断是否在黑名单中
+                for (String item : blackList.split(",")) {
+                    if (isp.trim().contains(item.trim())) {
+                        logger.info("Match found in blacklist for ISP: " + item.trim());
+                        return true;
+                    }
+                }
+                return false;
             } catch (Exception e) {
                 logger.error(e);
                 return false;
