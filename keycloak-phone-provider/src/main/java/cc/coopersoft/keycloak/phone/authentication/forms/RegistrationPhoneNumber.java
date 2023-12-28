@@ -26,6 +26,7 @@ import org.keycloak.provider.ProviderConfigProperty;
 import org.keycloak.services.validation.Validation;
 
 import jakarta.ws.rs.core.MultivaluedMap;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -98,11 +99,21 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
         return PROVIDER_ID;
     }
 
-    // FormAction
+    /**
+     * 获取TokenCodeService对象
+     *
+     * @param session Keycloak会话对象
+     * @return TokenCodeService对象
+     */
     private TokenCodeService getTokenCodeService(KeycloakSession session) {
         return session.getProvider(TokenCodeService.class);
     }
 
+    /**
+     * 验证手机号码和验证码
+     *
+     * @param context 验证上下文对象
+     */
     @Override
     public void validate(ValidationContext context) {
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
