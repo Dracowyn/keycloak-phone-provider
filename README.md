@@ -4,8 +4,13 @@
 
 我们团队是在：https://github.com/cooperlyt/keycloak-phone-provider/tree/10.0.2
 
-也就是使用Keycloak的11.0.3版本作为基线开发的版本基础上为了做定制化需求做了二开，加入了人机验证geetest，国际区号选择功能并使其兼容了Keycloak 22版本。
+也就是使用Keycloak的11.0.3版本作为基线开发的版本基础上为了做定制化需求做了二开，加入了人机验证geetest，国际区号选择功能并使其兼容了Keycloak 23版本。
 
+本插件运行环境要求：
++ Keycloak 23.x.x
++ Java 17
+
+## 项目说明
 以下除了**安装教程**以外的翻译并不准确。
 
 本项目的开源前端以及文档的进一步完善等我有心思了再补（x
@@ -27,10 +32,6 @@
 ## 客户端:
 
 此为原作者的安卓手机客户端项目 [KeycloakClient](https://github.com/cooper-lyt/KeycloakClient) 
-
-## 兼容性
-
-只兼容Keycloak v23.x，其它版本测试不通过。
 
 ## 使用方法
 
