@@ -25,7 +25,7 @@ stages:
         artifacts:
           - name: BUILD_ARTIFACT
             path:
-              - ./target
+              - ./target/providers
         strategy: {}
       - step: publish@general_artifacts
         name: publish_general_artifacts
