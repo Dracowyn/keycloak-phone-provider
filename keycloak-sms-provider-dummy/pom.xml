@@ -16,7 +16,7 @@
     <dependency>
       <groupId>cc.coopersoft</groupId>
       <artifactId>keycloak-phone-provider</artifactId>
-      <version>1.2</version>
+      <version>1.2.1</version>
       <scope>provided</scope>
     </dependency>
   </dependencies>
