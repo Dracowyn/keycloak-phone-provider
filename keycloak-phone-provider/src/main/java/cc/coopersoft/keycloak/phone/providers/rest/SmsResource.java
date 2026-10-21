@@ -6,6 +6,7 @@ import cc.coopersoft.keycloak.phone.providers.rest.util.ResponseBuilder;
 import cc.coopersoft.keycloak.phone.providers.spi.AreaCodeService;
 import cc.coopersoft.keycloak.phone.providers.spi.ConfigService;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.Response;
@@ -90,6 +91,9 @@ public class SmsResource {
 
     @Path("update-profile")
     public VerificationCodeResource getVerificateCodeResource() {
+        if (!session.getProvider(ConfigService.class).isProfileUpdateEnabled()) {
+            throw new NotFoundException();
+        }
         return new VerificationCodeResource(session);
     }
 }

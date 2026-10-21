@@ -7,6 +7,7 @@ import cc.coopersoft.keycloak.phone.credential.PhoneOtpCredentialProviderFactory
 import cc.coopersoft.keycloak.phone.providers.constants.MessageSendResult;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.jpa.TokenCodeEntity;
+import cc.coopersoft.keycloak.phone.providers.jpa.PhoneMessageSendEntity;
 import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
@@ -75,6 +76,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         if (realm == null) {
             throw new IllegalStateException("Cannot mutate tokens for a missing realm");
         }
+        session.setAttribute(PhoneMessageQuota.TOKEN_LOCK_HELD, Boolean.TRUE);
     }
 
     private TokenCodeEntity currentProcessForMutation(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
@@ -162,38 +164,33 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public boolean canResend(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
-        TokenCodeEntity entity = currentProcessEntity(phoneNumber, tokenCodeType);
-        if (entity == null) {
-            return true;
+        LocalDateTime retryAt = resendDeadline(phoneNumber, tokenCodeType);
+        return retryAt == null || !retryAt.isAfter(LocalDateTime.now());
+    }
+
+    private LocalDateTime resendDeadline(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime retryAt = PhoneMessageQuota.recent(getEntityManager(), getRealm().getId(), phoneNumber, tokenCodeType, now)
+                .stream().map(PhoneMessageSendEntity::getResendExpiresAt).max(LocalDateTime::compareTo).orElse(null);
+        TokenCodeEntity token = currentProcessEntity(phoneNumber, tokenCodeType);
+        if (token != null && token.getResendExpiresAt() != null
+                && (retryAt == null || token.getResendExpiresAt().isAfter(retryAt))) {
+            retryAt = token.getResendExpiresAt();
         }
-        LocalDateTime resendExpiresAt = entity.getResendExpiresAt();
-        return (resendExpiresAt == null || resendExpiresAt.isBefore(LocalDateTime.now()));
+        return retryAt;
     }
 
     @Override
     public boolean isAbusing(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
-
-        LocalDateTime oneHourAgo = LocalDateTime.now().minusHours(1);
-
-        List<TokenCodeEntity> entities = getEntityManager()
-                .createNamedQuery("processesSince", TokenCodeEntity.class)
-                .setParameter("realmId", getRealm().getId())
-                .setParameter("areaCode", phoneNumber.getAreaCode())
-                .setParameter("phoneNumber", phoneNumber.getPhoneNumber())
-                .setParameter("date", oneHourAgo)
-                .setParameter("type", tokenCodeType.name())
-                .getResultList();
-
-        return entities.size() > 3;
+        return PhoneMessageQuota.recent(getEntityManager(), getRealm().getId(), phoneNumber,
+                tokenCodeType, LocalDateTime.now()).size() >= 4;
     }
 
     @Override
     public void persistCode(TokenCodeRepresentation tokenCode, TokenCodeType tokenCodeType, MessageSendResult sendResult) {
         // PhoneMessageService sends first; no provider HTTP call holds this lock.
         lockTokenMutations();
-        // 只清理1小时前的历史记录：最近1小时内的记录必须保留，isAbusing 依赖它们统计发送频次。
-        // 若在此处全量删除（或发送前调用 removeCode），表中任意时刻至多1行，一小时防滥用上限将永远不会触发。
-        // 校验成功时 removeCode 仍会清空该号码该类型的全部记录，不会长期堆积。
+        // Token cleanup does not touch the independent durable sending quota.
         EntityManager em = getEntityManager();
         LocalDateTime cutoff = LocalDateTime.now().minusHours(1);
         em.createNamedQuery("getAll", TokenCodeEntity.class)
@@ -377,17 +374,11 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public LocalDateTime getResendExpires(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
-        if (this.canResend(phoneNumber, tokenCodeType)) {
-            throw new BadRequestException(String.format("Resend timeout in %s process for %s is finished.",
-                    tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
+        LocalDateTime retryAt = resendDeadline(phoneNumber, tokenCodeType);
+        if (retryAt == null || !retryAt.isAfter(LocalDateTime.now())) {
+            throw new BadRequestException("Resend timeout is finished");
         }
-
-        TokenCodeRepresentation tokenCode = currentProcess(phoneNumber, tokenCodeType);
-        if (tokenCode == null) {
-            throw new BadRequestException(String.format("There is no valid %s in process for %s",
-                    tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
-        }
-        return tokenCode.getResendExpiresAt();
+        return retryAt;
     }
 
     @Override

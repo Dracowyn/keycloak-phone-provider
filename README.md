@@ -63,6 +63,8 @@ spi-phone-provider-config-default-areacode=86
 spi-phone-provider-config-areacode-config=${kc.home.dir:}/conf/areacode.json
 # 锁定区号
 spi-phone-provider-config-area-locked=false
+# 自助修改/解绑手机号 REST 接口需明确启用，默认关闭
+spi-phone-provider-config-profile-update-enabled=false
 ```
 
 #### 3. 设置短信模板ID、短信签名、accessKeyID、accessSecret
@@ -435,3 +437,31 @@ grant_type=password&phone_number=$PHONE_NUMBER&code=$VERIFICATION_CODE&client_id
 
 部分代码基于这两个项目中的现有代码编写：[keycloak-sms-provider](https://github.com/mths0x5f/keycloak-sms-provider)
 和 [keycloak-phone-authenticator](https://github.com/FX-HAO/keycloak-phone-authenticator)。如果盲写编写所有这些提供程序，我肯定会遇到很多问题。谢谢！
+
+
+### Sending quota and self-service phone changes
+
+The /realms/{realm}/sms/update-profile REST subresource is disabled by default,
+including its update and unset operations. Enable profileUpdateEnabled=true
+(spi-phone-provider-config-profile-update-enabled=true) only if the deployment
+intentionally uses this module to manage phone ownership. This setting does not
+enable or disable authentication flows. Integrations with their own account-linking
+policy should leave this subresource disabled and separately keep unused login,
+registration and MFA executions out of every reachable flow.
+
+Before calling an SMS provider, the module reserves one of the existing four
+send attempts per rolling hour for that realm, phone number and token purpose.
+The check and reservation commit in a separate short database transaction. The
+provider call holds no quota/realm lock. A consumed OTP, failed verification or
+rolled-back request cannot refund an SMS that may already have been sent. Failed
+or unknown delivery retains the reservation and blocks retry for the remaining
+hour; successful delivery uses the provider cooldown with a minimum of 60 seconds.
+A new request must send before it acquires this module's verification-token lock.
+
+The migration adds PHONE_MESSAGE_SEND, which stores only send metadata, never
+OTP values. It copies existing token metadata but cannot reconstruct sends that
+older versions already deleted on consumption. Do not run old and new sending
+implementations concurrently during an upgrade. Disable the sending entry points
+before rollback; do not delete quota or token tables as a rollback procedure.
+Metadata older than an hour is pruned for the active realm during reservation.
+No deployment or real-message verification is implied by isolated tests.

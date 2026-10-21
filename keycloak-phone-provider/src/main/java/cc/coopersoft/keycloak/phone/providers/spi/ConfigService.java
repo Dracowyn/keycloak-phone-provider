@@ -30,6 +30,8 @@ public class ConfigService implements Provider {
      * 是否允许未设置区域代码
      */
     public final boolean allowUnset;
+    /** Explicit opt-in for the REST API that changes or unsets user phone numbers. */
+    public final boolean profileUpdateEnabled;
     /**
      * 是否启用归属地验证
      */
@@ -50,6 +52,7 @@ public class ConfigService implements Provider {
         this.areaCodeConfig = config.get("areacodeConfig", "./areacode.json");
         this.areaLocked = config.getBoolean("areaLocked", false);
         this.allowUnset = config.getBoolean("allowUnset", true);
+        this.profileUpdateEnabled = config.getBoolean("profileUpdateEnabled", false);
         this.locationEnable = config.getBoolean("locationVerify", false);
         this.locationAppcode = config.get("locationAppcode", null);
         this.locationBlackList = config.get("locationBlackList", null);

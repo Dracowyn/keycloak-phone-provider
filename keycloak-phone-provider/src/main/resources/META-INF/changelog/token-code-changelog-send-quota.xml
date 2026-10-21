@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.1.xsd">
+  <changeSet author="dracowyn" id="phone-message-send-quota">
+    <createTable tableName="PHONE_MESSAGE_SEND">
+      <column name="ID" type="VARCHAR(36)"><constraints primaryKey="true" primaryKeyName="PK_PHONE_MESSAGE_SEND" nullable="false"/></column>
+      <column name="REALM_ID" type="VARCHAR(36)"><constraints nullable="false"/></column>
+      <column name="AREA_CODE" type="VARCHAR(4)"><constraints nullable="false"/></column>
+      <column name="PHONE_NUMBER" type="VARCHAR(20)"><constraints nullable="false"/></column>
+      <column name="TYPE" type="VARCHAR(20)"><constraints nullable="false"/></column>
+      <column name="CREATED_AT" type="DATETIME"><constraints nullable="false"/></column>
+      <column name="RESEND_EXPIRES_AT" type="DATETIME"><constraints nullable="false"/></column>
+    </createTable>
+    <createIndex indexName="IDX_PHONE_MESSAGE_SEND_NUMBER" tableName="PHONE_MESSAGE_SEND">
+      <column name="REALM_ID"/><column name="AREA_CODE"/><column name="PHONE_NUMBER"/>
+      <column name="TYPE"/><column name="CREATED_AT"/>
+    </createIndex>
+    <!-- Preserve existing send metadata, without copying any OTP or user data. -->
+    <sql>INSERT INTO PHONE_MESSAGE_SEND (ID, REALM_ID, AREA_CODE, PHONE_NUMBER, TYPE, CREATED_AT, RESEND_EXPIRES_AT)
+      SELECT ID, REALM_ID, AREA_CODE, PHONE_NUMBER, TYPE, CREATED_AT, RESEND_EXPIRES_AT FROM PHONE_MESSAGE_TOKEN_CODE</sql>
+  </changeSet>
+</databaseChangeLog>

@@ -3,6 +3,8 @@ package testprobe;
 import cc.coopersoft.keycloak.phone.providers.constants.MessageSendResult;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.jpa.TokenCodeEntity;
+import cc.coopersoft.keycloak.phone.providers.jpa.PhoneMessageSendEntity;
+import cc.coopersoft.keycloak.phone.providers.spi.PhoneMessageService;
 import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
@@ -122,6 +124,77 @@ public final class ConcurrencyProbe implements RealmResourceProviderFactory {
                     .getResultList();
             return Map.of("rows", rows.size(), "attempts", rows.stream()
                     .mapToInt(row -> row.getAttempts() == null ? 0 : row.getAttempts()).sum());
+        }
+
+        private java.util.List<PhoneMessageSendEntity> sends(PhoneNumber phone) {
+            return em().createNamedQuery("phoneSendsSince", PhoneMessageSendEntity.class)
+                    .setParameter("realmId", realmId()).setParameter("areaCode", phone.getAreaCode())
+                    .setParameter("phoneNumber", phone.getPhoneNumber()).setParameter("type", "VERIFY")
+                    .setParameter("since", LocalDateTime.now().minusHours(1)).getResultList();
+        }
+        @POST @Path("send") @Consumes("application/x-www-form-urlencoded") @Produces("application/json")
+        public Map<String, Object> send(@HeaderParam("Authorization") String authorization,
+                @FormParam("phone") String phone, @DefaultValue("false") @FormParam("rollback") boolean rollback,
+                @DefaultValue("false") @FormParam("locked") boolean locked,
+                @FormParam("group") String group, @DefaultValue("8") @FormParam("count") int count) throws Exception {
+            guard(authorization);
+            PhoneNumber number = number(phone);
+            if (locked) tokens().removeCode(number, TokenCodeType.VERIFY);
+            barrier(group, count);
+            MessageSendResult result;
+            try { result = session.getProvider(PhoneMessageService.class).sendTokenCode(number, TokenCodeType.VERIFY); }
+            catch (ForbiddenException limit) { return Map.of("status", 403); }
+            catch (IllegalStateException invalid) {
+                if (!locked) throw invalid;
+                return Map.of("status", 409);
+            }
+            if (rollback) session.getTransactionManager().setRollbackOnly();
+            return Map.of("status", result.getStatus());
+        }
+        @GET @Path("quota") @Produces("application/json")
+        public Map<String, Object> quota(@HeaderParam("Authorization") String authorization, @QueryParam("phone") String phone) {
+            guard(authorization);
+            PhoneNumber number = number(phone);
+            var rows = sends(number);
+            var retry = rows.stream().map(PhoneMessageSendEntity::getResendExpiresAt).max(LocalDateTime::compareTo);
+            String key = ProbeSmsSender.key(session, number);
+            return Map.of("rows", rows.size(), "senderCalls", ProbeSmsSender.CALLS.getOrDefault(key, new java.util.concurrent.atomic.AtomicInteger()).get(),
+                    "blockedSender", ProbeSmsSender.BLOCKS.containsKey(key),
+                    "retrySeconds", retry.map(t -> java.time.Duration.between(LocalDateTime.now(), t).getSeconds()).orElse(0L),
+                    "canResend", tokens().canResend(number, TokenCodeType.VERIFY),
+                    "abusing", tokens().isAbusing(number, TokenCodeType.VERIFY));
+        }
+        @POST @Path("cooldown") @Consumes("application/x-www-form-urlencoded")
+        public Response cooldown(@HeaderParam("Authorization") String authorization, @FormParam("phone") String phone,
+                @DefaultValue("false") @FormParam("ageHour") boolean ageHour) {
+            guard(authorization);
+            em().find(RealmEntity.class, realmId(), LockModeType.PESSIMISTIC_WRITE);
+            for (var row : sends(number(phone))) {
+                row.setResendExpiresAt(LocalDateTime.now().minusSeconds(1));
+                if (ageHour) row.setCreatedAt(LocalDateTime.now().minusHours(2));
+            }
+            return Response.noContent().build();
+        }
+        @GET @Path("current") @Produces("application/json")
+        public Map<String, Object> current(@HeaderParam("Authorization") String authorization, @QueryParam("phone") String phone) {
+            guard(authorization);
+            var token = tokens().currentProcess(number(phone), TokenCodeType.VERIFY);
+            return Map.of("code", token == null ? "" : token.getCode());
+        }
+        @POST @Path("sender-mode") @Consumes("application/x-www-form-urlencoded")
+        public Response mode(@HeaderParam("Authorization") String authorization, @FormParam("phone") String phone,
+                @DefaultValue("ok") @FormParam("mode") String mode) {
+            guard(authorization);
+            if (!java.util.Set.of("ok", "fail", "block").contains(mode)) throw new BadRequestException();
+            ProbeSmsSender.MODES.put(ProbeSmsSender.key(session, number(phone)), mode);
+            return Response.noContent().build();
+        }
+        @POST @Path("sender-release") @Consumes("application/x-www-form-urlencoded")
+        public Response senderRelease(@HeaderParam("Authorization") String authorization, @FormParam("phone") String phone) {
+            guard(authorization);
+            var block = ProbeSmsSender.BLOCKS.get(ProbeSmsSender.key(session, number(phone)));
+            if (block != null) block.countDown();
+            return Response.noContent().build();
         }
 
         @POST @Path("hold") @Produces("application/json")

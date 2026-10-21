@@ -3,7 +3,7 @@ package cc.coopersoft.keycloak.phone.providers.jpa;
 import org.jboss.logging.Logger;
 import org.keycloak.connections.jpa.entityprovider.JpaEntityProvider;
 
-import java.util.Collections;
+
 import java.util.List;
 
 public class TokenCodeJpaEntityProvider implements JpaEntityProvider {
@@ -12,7 +12,7 @@ public class TokenCodeJpaEntityProvider implements JpaEntityProvider {
     @Override
     public List<Class<?>> getEntities() {
         log.info("get TokenCodeEntity");
-        return Collections.singletonList(TokenCodeEntity.class);
+        return List.of(TokenCodeEntity.class, PhoneMessageSendEntity.class);
     }
 
     @Override

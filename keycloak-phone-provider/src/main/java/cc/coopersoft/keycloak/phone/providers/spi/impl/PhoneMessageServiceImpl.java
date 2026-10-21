@@ -111,26 +111,14 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
      */
     @Override
     public MessageSendResult sendTokenCode(PhoneNumber phoneNumber, TokenCodeType type) {
-        // 判断是否滥用短信验证码服务
-        if (getTokenCodeService().isAbusing(phoneNumber, type)) {
-            throw new ForbiddenException("You requested the maximum number of messages the last hour");
+        TokenCodeRepresentation token = TokenCodeRepresentation.forPhoneNumber(phoneNumber);
+        PhoneMessageQuota quota = new PhoneMessageQuota(session);
+        java.time.LocalDateTime retryAt = quota.reserve(phoneNumber, type, token.getId());
+        if (retryAt != null) {
+            return new MessageSendResult(-2).setError("rateTime", "Please wait for minutes.")
+                    .setResendExpires(retryAt);
         }
-
         MessageSendResult result;
-
-        // 判断是否可以重新发送短信验证码
-        if (!getTokenCodeService().canResend(phoneNumber, type)) {
-            TokenCodeRepresentation current = getTokenCodeService().currentProcess(phoneNumber, type);
-            result = new MessageSendResult(-2).setError("rateTime", "Please wait for minutes.");
-            if (current != null && current.getResendExpiresAt() != null) {
-                result.setResendExpires(current.getResendExpiresAt());
-            }
-            return result;
-        }
-
-        // 注意：发送前不删除旧验证码记录——最近1小时的记录要留给 isAbusing 做频控计数
-        // （此前这里的 removeCode 导致表中至多1行，一小时防滥用上限永远不会触发）。
-        // 旧记录由 persistCode 清理1小时前的部分；currentProcess 按 createdAt 取最新，旧验证码不会再被接受。
 
         // 创建事件构建器来记录短信发送详细事件
         EventBuilder eventBuilder = new EventBuilder(session.getContext().getRealm(), session, session.getContext().getConnection())
@@ -148,7 +136,6 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
             eventBuilder.user(user);
         }
 
-        TokenCodeRepresentation token = TokenCodeRepresentation.forPhoneNumber(phoneNumber);
         PhoneLocation phoneLocation = new PhoneLocation();
         // 判断是否启用归属地检测，并进行验证
         if (phoneLocation.verification(locationEnable, locationAppcode, phoneNumber, locationBlackList, session)) {
@@ -170,7 +157,10 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
             }
         }
 
+        // This short transaction finishes before persistCode acquires the request lock.
+        // Errors/rollback after this point keep the durable quota consumed.
         if (result.ok()) {
+            quota.completed(token.getId(), result.getResendExpires());
             getTokenCodeService().persistCode(token, type, result);
             logger.info(String.format("Send %s SMS verification code to %s over %s", type.getLabel(), phoneNumber.getFullPhoneNumber(),
                     service));
