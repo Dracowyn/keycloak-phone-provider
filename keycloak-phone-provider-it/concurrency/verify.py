@@ -99,8 +99,19 @@ with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
             return call(base + "/admin/realms/" + path, body=body, method=method, headers=admin_headers)[1]
         for realm in ["concurrency-a", "concurrency-b"]:
             admin("", {"realm": realm, "enabled": True, "sslRequired": "none"})
+            # Keycloak drops undeclared user attributes. Declare these synthetic
+            # fields only in the disposable realms used by this fixture.
+            profile = admin(realm + "/users/profile")
+            profile["attributes"] += [
+                {"name": name, "permissions": {"view": ["admin"], "edit": ["admin"]}}
+                for name in ["phoneNumber", "phoneNumberVerified"]]
+            admin(realm + "/users/profile", profile, method="PUT")
             admin(realm + "/users", {"username": "fixture-owner", "enabled": True,
-                  "attributes": {"phoneNumber": ["+8613800000800"]}})
+                  "attributes": {"phoneNumber": ["+86 13800000800"]}})
+        for realm in ["concurrency-a", "concurrency-b"]:
+            fixture_user, = admin(realm + "/users?username=fixture-owner&exact=true")
+            check("fixture-owner-number-" + realm,
+                  fixture_user.get("attributes", {}).get("phoneNumber") == ["+86 13800000800"])
         headers = {"Authorization": "Bearer " + secret}
         def probe(path, form=None, realm="concurrency-a", method=None):
             return call(base + "/realms/" + realm + "/concurrency-probe/" + path,
@@ -183,6 +194,7 @@ with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
                           "keycloak_image": args.keycloak_image, "database": "PostgreSQL",
                           "real_sms_sent": False, "production_changed": False}, indent=2))
     finally:
+        print(json.dumps({"checks_completed": results, "keycloak_image": args.keycloak_image, "real_sms_sent": False, "production_changed": False}))
         for container in [keycloak, postgres]:
             docker("rm", "-f", container, check=False)
         docker("network", "rm", network, check=False)
