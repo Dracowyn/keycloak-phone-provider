@@ -42,7 +42,7 @@ def docker(*argv, check=True):
         raise RuntimeError("Fixture docker operation failed: " + argv[0])
     return result.stdout
 
-def call(url, form=None, body=None, method=None, headers=None, timeout=30):
+def call(url, form=None, body=None, method=None, headers=None, timeout=30, allow_status=()):
     data = urllib.parse.urlencode(form).encode() if form is not None else None
     headers = dict(headers or {})
     if body is not None:
@@ -53,6 +53,9 @@ def call(url, form=None, body=None, method=None, headers=None, timeout=30):
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.status, json.loads(response.read() or "null")
     except urllib.error.HTTPError as error:
+        if error.code in allow_status:
+            error.close()
+            return error.code, None
         # Do not report a response that might contain the fixture OTP or credentials.
         raise AssertionError("Fixture HTTP " + str(error.code)) from None
 
@@ -209,6 +212,10 @@ with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
         check("profile-route-real-cookie-keeps-users", snapshot() == cookie_users_before)
 
 
+        admin("concurrency-a/users", {"username": "fixture-mfa", "enabled": True,
+              "firstName": "Fixture", "lastName": "MFA", "email": "fixture-mfa@example.invalid", "emailVerified": True,
+              "attributes": {"phoneNumber": ["+86 13800000909"], "phoneNumberVerified": ["true"]}})
+        probe("setup-mfa", method="POST")
         initial = snapshot()
         # Repeated real HTTP requests each enlist separate Keycloak/JPA transactions.
         for iteration in range(10):
@@ -271,7 +278,9 @@ with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
             check(mode + "-overload-single-consumption", sum(out) == 1 and not verify(phone, code))
         # Exercise the real sending service, with a test-only sender that never sends SMS.
         def send(phone, **options):
-            return probe("send", {"phone": phone, **options})["status"]
+            status, body = call(base + "/realms/concurrency-a/concurrency-probe/send",
+                                form={"phone": phone, **options}, headers=headers, allow_status=(409,))
+            return status if body is None else body["status"]
         def quota(phone, realm="concurrency-a"):
             return probe("quota?phone=" + phone, realm=realm)
         def elapsed_cooldown(phone, **options):
@@ -333,6 +342,92 @@ with tempfile.TemporaryDirectory(prefix=prefix) as temporary:
                 probe("sender-release", {"phone": phone})
             holder.result()
             check("blocked-sender-can-complete", sending.result() == 1)
+        # Actual Keycloak LOGIN form -> SMS MFA, same initial request.
+        # The first response must defer with 303 and no sender call; refreshing
+        # the challenged execution must send exactly once and still require OTP.
+        alias = "fixture-phone-mfa"
+        admin("concurrency-a/authentication/flows", {"alias": alias, "providerId": "basic-flow",
+              "topLevel": True, "builtIn": False})
+        for provider in ["auth-phone-password-login-form", "sms-otp-authenticator"]:
+            admin("concurrency-a/authentication/flows/" + alias + "/executions/execution", {"provider": provider})
+        executions = admin("concurrency-a/authentication/flows/" + alias + "/executions")
+        for execution in executions:
+            execution["requirement"] = "REQUIRED"
+            admin("concurrency-a/authentication/flows/" + alias + "/executions", execution, method="PUT")
+        flow, = [f for f in admin("concurrency-a/authentication/flows") if f["alias"] == alias]
+        admin("concurrency-a/clients", {"clientId": "fixture-mfa-browser", "publicClient": True,
+              "standardFlowEnabled": True, "redirectUris": [base + "/fixture/callback"],
+              "authenticationFlowBindingOverrides": {"browser": flow["id"]}})
+        admin("concurrency-a", {"loginTheme": "phone-fixture"}, method="PUT")
+        mfa_jar = http.cookiejar.CookieJar(FixtureCookiePolicy())
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, request, fp, code, message, headers, newurl):
+                return None
+        mfa_browser = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(mfa_jar), NoRedirect())
+        def mfa_open(request):
+            try:
+                response = mfa_browser.open(request, timeout=30)
+            except urllib.error.HTTPError as error:
+                response = error
+            with response:
+                return response.code, response.headers, response.read().decode()
+        def form_action(page, marker):
+            match = re.search(r'<form[^>]*id="' + marker + r'"[^>]*action="([^"]+)"', page)
+            if not match: raise AssertionError("Fixture form unavailable: " + marker)
+            return html.unescape(match.group(1))
+        mfa_auth_url = base + "/realms/concurrency-a/protocol/openid-connect/auth?" + urllib.parse.urlencode({
+            "client_id": "fixture-mfa-browser", "response_type": "code", "scope": "openid",
+            "redirect_uri": base + "/fixture/callback", "state": "fixture-mfa-state"})
+        status, _, page = mfa_open(mfa_auth_url)
+        check("real-flow-phone-login-form", status == 200 and 'id="fixture-login"' in page)
+        phone = "13800000909"
+        login_code = seed(phone, type="LOGIN")
+        status, redirect, _ = mfa_open(urllib.request.Request(form_action(page, "fixture-login"),
+            data=urllib.parse.urlencode({"loginType": "phone", "areaCode": "86", "phoneNumber": phone,
+                                        "smsCode": login_code}).encode()))
+        refresh = redirect.get("Location", "")
+        check("real-flow-login-mfa-defers-without-sending", status == 303
+              and refresh.startswith(base + "/realms/concurrency-a/login-actions/authenticate?")
+              and "execution=" in refresh and quota(phone)["senderCalls"] == 0
+              and not probe("current?phone=" + phone + "&type=LOGIN")["code"]
+              and not any(c.name == "KEYCLOAK_IDENTITY" for c in mfa_jar))
+        probe("sender-mode", {"phone": phone, "mode": "block"})
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            sending = pool.submit(lambda: mfa_open(refresh))
+            for _ in range(100):
+                if quota(phone)["blockedSender"]: break
+                time.sleep(0.05)
+            else: raise AssertionError("Deferred MFA did not reach the sender")
+            holder = pool.submit(lambda: probe("hold", method="POST"))
+            try:
+                for _ in range(50):
+                    if probe("held")["held"]: break
+                    time.sleep(0.05)
+                else: raise AssertionError("Deferred MFA held the realm lock during send")
+                check("real-flow-mfa-network-call-holds-no-realm-lock", not sending.done())
+            finally:
+                probe("release", method="POST")
+                probe("sender-release", {"phone": phone})
+            holder.result()
+            status, _, page = sending.result()
+        check("real-flow-refresh-sends-once-and-requires-mfa", status == 200
+              and 'id="fixture-mfa"' in page and quota(phone)["senderCalls"] == 1
+              and not any(c.name == "KEYCLOAK_IDENTITY" for c in mfa_jar))
+        mfa_action = form_action(page, "fixture-mfa")
+        status, _, wrong_page = mfa_open(urllib.request.Request(mfa_action,
+            data=urllib.parse.urlencode({"smsCode": "definitely-wrong"}).encode()))
+        check("real-flow-wrong-mfa-rejected", status == 200 and 'id="fixture-mfa"' in wrong_page
+              and not any(c.name == "KEYCLOAK_IDENTITY" for c in mfa_jar))
+        otp = probe("current?phone=" + phone + "&type=OTP")["code"]
+        check("real-flow-otp-available", bool(otp))
+        status, redirect, _ = mfa_open(urllib.request.Request(form_action(wrong_page, "fixture-mfa"),
+            data=urllib.parse.urlencode({"smsCode": otp}).encode()))
+        check("real-flow-correct-mfa-authenticates", status in [302, 303]
+              and redirect.get("Location", "").startswith(base + "/fixture/callback?")
+              and "code=" in redirect.get("Location", "")
+              and any(c.name == "KEYCLOAK_IDENTITY" for c in mfa_jar)
+              and not probe("current?phone=" + phone + "&type=OTP")["code"])
+        admin("concurrency-a", {"loginTheme": "keycloak"}, method="PUT")
         # All mutating subresource methods must be rejected by the server switch,
         # before cookie authentication, form parsing, or user updates.
         users_before_route_checks = snapshot()

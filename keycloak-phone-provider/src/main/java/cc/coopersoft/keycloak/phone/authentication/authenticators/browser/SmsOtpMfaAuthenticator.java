@@ -4,6 +4,7 @@ import cc.coopersoft.keycloak.phone.authentication.requiredactions.ConfigSmsOtpR
 import cc.coopersoft.keycloak.phone.credential.PhoneOtpCredentialProvider;
 import cc.coopersoft.keycloak.phone.credential.PhoneOtpCredentialProviderFactory;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
+import cc.coopersoft.keycloak.phone.providers.exception.SmsSendDeferredException;
 import cc.coopersoft.keycloak.phone.providers.spi.PhoneMessageService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
@@ -116,6 +117,12 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
         try {
             phoneMessageService.sendTokenCode(phoneNumber, TokenCodeType.OTP);
             challenge = context.form().createForm("login-sms-otp.ftl");
+        } catch (SmsSendDeferredException deferred) {
+            // A previous execution consumed LOGIN in this request. Finish that
+            // transaction before retrying this execution: no remote call may
+            // hold the token lock, and rollback must still restore LOGIN.
+            context.challenge(Response.seeOther(context.getRefreshExecutionUrl()).build());
+            return;
         } catch (ForbiddenException e) {
             challenge = context.form().setError("abusedMessageService").createForm("login-sms-otp.ftl");
         }

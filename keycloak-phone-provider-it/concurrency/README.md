@@ -33,8 +33,12 @@ fixture sender is replaced so no SMS is sent.
 The realm row serializes token mutations for every number in that realm until
 the enclosing request commits. This reduces same-realm write throughput. The separate send-quota table has a
 metadata-only migration, covered by the extended fixture. SMS sending occurs before
-`persistCode` takes the lock. Callers must not acquire the token lock and then
-perform a remote SMS call in the same transaction.
+`persistCode` takes the lock. Direct callers that already hold the token lock receive a retryable HTTP 409,
+before any quota reservation or sender call. In the existing phone-login + SMS
+MFA combination, the MFA authenticator responds with a 303 to Keycloak's current
+execution refresh URL. The next request resumes MFA after LOGIN commits; it does
+not authenticate the user, skip MFA or alter the configured flow. Token changes
+remain in the original request transaction so a rollback still restores them.
 
 No real SMS or external accounts are used. Random fixture credentials and OTPs
 stay in driver memory or a temporary environment file with mode 0600. Container
@@ -45,7 +49,8 @@ containers and network are removed on exit.
 The fixture now also calls the real PhoneMessageService with a separate test-only
 sender. It checks eight-way send contention, hourly quota after consumption and
 verification exhaustion, failed/unknown delivery, outer request rollback, realm
-isolation, window expiry and refusal of requests already holding the token lock.
+isolation, window expiry and an actual HTTP 409 for requests already holding the token lock
+(the probe does not map an internal exception to a fake success).
 A latch in the fake sender proves another transaction can lock the realm while
 sending is blocked. Direct HTTP requests exercise the profile route switch.
 
@@ -68,3 +73,10 @@ For concurrent runs built against different SDK versions, --provider-dir selects
 a directory containing phone.jar, dummy.jar, probe.jar and keycloak-version.txt.
 The legacy-upgrade fixture gives its two synthetic token rows a 30-minute cooldown
 before startup, then verifies exact metadata preservation and no sender call.
+
+The test-only phone-fixture theme is packaged only in probe.jar. It permits the
+actual Keycloak engine to execute PhoneOrPasswordLoginForm -> SmsOtpMfaAuthenticator:
+LOGIN POST returns 303 without sending or authenticating; the refresh sends once,
+without holding the realm lock during the blocked sender; a wrong MFA code is
+rejected, and only a correct MFA code completes login and consumes the OTP.
+No theme is added to the release provider.

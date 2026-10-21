@@ -36,6 +36,10 @@ service.parent.mkdir(parents=True)
 service.write_text("testprobe.ConcurrencyProbe\n")
 sender_service = classes / "META-INF/services/cc.coopersoft.keycloak.phone.providers.spi.MessageSenderServiceProviderFactory"
 sender_service.write_text("testprobe.ProbeSmsSender\n")
+theme = classes / "theme/phone-fixture/login"
+shutil.copytree(HERE / "theme/login", theme)
+(classes / "META-INF/keycloak-themes.json").write_text(
+    '{"themes":[{"name":"phone-fixture","types":["login"]}]}')
 subprocess.run([str(java_bin / "jar") if java_bin else "jar", "--create", "--file",
                 str(target / "probe.jar"), "-C", str(classes), "."], check=True)
 for source, name in [(provider, "phone.jar"), (ROOT / "keycloak-sms-provider-dummy/target/keycloak-sms-provider-dummy-2.1.0.jar", "dummy.jar")]:

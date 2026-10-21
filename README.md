@@ -456,7 +456,12 @@ provider call holds no quota/realm lock. A consumed OTP, failed verification or
 rolled-back request cannot refund an SMS that may already have been sent. Failed
 or unknown delivery retains the reservation and blocks retry for the remaining
 hour; successful delivery uses the provider cooldown with a minimum of 60 seconds.
-A new request must send before it acquires this module's verification-token lock.
+If a request already holds this module's verification-token lock, sending returns
+HTTP 409 before reserving quota or contacting the sender. For the existing phone
+login followed by SMS MFA, the authenticator instead challenges with a 303 to
+Keycloak's current execution refresh URL. The next request sends after LOGIN has
+committed. It still requires the MFA code and preserves token rollback behavior;
+no authentication flow or execution is enabled by this change.
 
 The migration adds PHONE_MESSAGE_SEND, which stores only send metadata, never
 OTP values. It copies existing token metadata but cannot reconstruct sends that

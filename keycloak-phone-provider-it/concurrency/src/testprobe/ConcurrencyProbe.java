@@ -1,6 +1,7 @@
 package testprobe;
 
 import cc.coopersoft.keycloak.phone.providers.constants.MessageSendResult;
+import cc.coopersoft.keycloak.phone.credential.PhoneOtpCredentialModel;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.jpa.TokenCodeEntity;
 import cc.coopersoft.keycloak.phone.providers.jpa.PhoneMessageSendEntity;
@@ -67,18 +68,30 @@ public final class ConcurrencyProbe implements RealmResourceProviderFactory {
         public Map<String, Object> seed(@HeaderParam("Authorization") String authorization,
                 @FormParam("phone") String phone, @DefaultValue("300") @FormParam("ttl") int ttl,
                 @DefaultValue("0") @FormParam("attempts") int attempts,
-                @FormParam("group") String group, @DefaultValue("2") @FormParam("count") int count)
+                @FormParam("group") String group, @DefaultValue("2") @FormParam("count") int count,
+                @DefaultValue("VERIFY") @FormParam("type") String type)
                 throws Exception {
             guard(authorization);
             if (ttl < 1 || ttl > 300 || attempts < 0 || attempts > 4) throw new BadRequestException();
+            if (!java.util.Set.of("VERIFY", "LOGIN").contains(type)) throw new BadRequestException();
             TokenCodeRepresentation token = TokenCodeRepresentation.forPhoneNumber(number(phone));
             barrier(group, count);
-            tokens().persistCode(token, TokenCodeType.VERIFY, MessageSendResult.success()
+            tokens().persistCode(token, TokenCodeType.valueOf(type), MessageSendResult.success()
                     .setExpires(LocalDateTime.now().plusSeconds(ttl))
                     .setResendExpires(LocalDateTime.now().plusSeconds(30)));
             TokenCodeEntity entity = em().find(TokenCodeEntity.class, token.getId());
             entity.setAttempts(attempts);
             return Map.of("code", token.getCode()); // response stays in test driver memory
+        }
+
+        @POST @Path("setup-mfa") @Consumes("application/x-www-form-urlencoded")
+        public Response setupMfa(@HeaderParam("Authorization") String authorization) {
+            guard(authorization);
+            UserModel user = session.users().getUserByUsername(session.getContext().getRealm(), "fixture-mfa");
+            if (user == null) throw new NotFoundException();
+            PhoneNumber phone = number("13800000909");
+            user.credentialManager().createStoredCredential(PhoneOtpCredentialModel.create(phone));
+            return Response.noContent().build();
         }
 
         @POST @Path("verify") @Consumes("application/x-www-form-urlencoded") @Produces("application/json")
@@ -144,10 +157,6 @@ public final class ConcurrencyProbe implements RealmResourceProviderFactory {
             MessageSendResult result;
             try { result = session.getProvider(PhoneMessageService.class).sendTokenCode(number, TokenCodeType.VERIFY); }
             catch (ForbiddenException limit) { return Map.of("status", 403); }
-            catch (IllegalStateException invalid) {
-                if (!locked) throw invalid;
-                return Map.of("status", 409);
-            }
             if (rollback) session.getTransactionManager().setRollbackOnly();
             return Map.of("status", result.getStatus());
         }
@@ -176,9 +185,10 @@ public final class ConcurrencyProbe implements RealmResourceProviderFactory {
             return Response.noContent().build();
         }
         @GET @Path("current") @Produces("application/json")
-        public Map<String, Object> current(@HeaderParam("Authorization") String authorization, @QueryParam("phone") String phone) {
+        public Map<String, Object> current(@HeaderParam("Authorization") String authorization, @QueryParam("phone") String phone,
+                @DefaultValue("VERIFY") @QueryParam("type") String type) {
             guard(authorization);
-            var token = tokens().currentProcess(number(phone), TokenCodeType.VERIFY);
+            var token = tokens().currentProcess(number(phone), TokenCodeType.valueOf(type));
             return Map.of("code", token == null ? "" : token.getCode());
         }
         @POST @Path("sender-mode") @Consumes("application/x-www-form-urlencoded")

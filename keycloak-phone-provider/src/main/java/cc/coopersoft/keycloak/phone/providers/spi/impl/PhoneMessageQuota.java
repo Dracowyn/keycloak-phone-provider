@@ -1,6 +1,7 @@
 package cc.coopersoft.keycloak.phone.providers.spi.impl;
 
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
+import cc.coopersoft.keycloak.phone.providers.exception.SmsSendDeferredException;
 import cc.coopersoft.keycloak.phone.providers.jpa.PhoneMessageSendEntity;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import jakarta.persistence.EntityManager;
@@ -54,7 +55,7 @@ final class PhoneMessageQuota {
     /** null permits this reservation; a timestamp means wait without calling a sender. */
     LocalDateTime reserve(PhoneNumber phone, TokenCodeType type, String id) {
         if (Boolean.TRUE.equals(session.getAttribute(TOKEN_LOCK_HELD))) {
-            throw new IllegalStateException("Send before mutating verification tokens in this request");
+            throw new SmsSendDeferredException();
         }
         return committed(em -> {
             LocalDateTime now = LocalDateTime.now();
