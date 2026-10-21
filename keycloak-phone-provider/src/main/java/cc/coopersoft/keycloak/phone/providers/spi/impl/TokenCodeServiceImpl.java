@@ -18,8 +18,10 @@ import org.keycloak.credential.CredentialProvider;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.models.jpa.entities.RealmEntity;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.NoResultException;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ForbiddenException;
@@ -55,6 +57,38 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     private RealmModel getRealm() {
         return session.getContext().getRealm();
+    }
+
+    /**
+     * Serialize token mutations on a row that survives token consumption.
+     * Locking only a token row is insufficient: consumption deletes it and an
+     * empty result cannot serialize a concurrent insert. The existing realm row
+     * avoids a new lock table/migration and works across Keycloak instances.
+     *
+     * The lock belongs to the enclosing Keycloak request transaction, so callers
+     * must not perform outbound SMS calls after acquiring it. Different numbers
+     * in one realm share this lock until that transaction commits or rolls back.
+     */
+    private void lockTokenMutations() {
+        RealmEntity realm = getEntityManager().find(
+                RealmEntity.class, getRealm().getId(), LockModeType.PESSIMISTIC_WRITE);
+        if (realm == null) {
+            throw new IllegalStateException("Cannot mutate tokens for a missing realm");
+        }
+    }
+
+    private TokenCodeEntity currentProcessForMutation(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
+        lockTokenMutations();
+        TokenCodeEntity entity = currentProcessEntity(phoneNumber, tokenCodeType);
+        if (entity != null) {
+            // An earlier read in this request may have cached the entity before
+            // another transaction incremented attempts. Reload after the lock.
+            getEntityManager().refresh(entity);
+            if (entity.getExpiresAt().isBefore(LocalDateTime.now())) {
+                return null;
+            }
+        }
+        return entity;
     }
 
     @Override
@@ -104,6 +138,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public void removeCode(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
+        lockTokenMutations();
         try {
             EntityManager em = getEntityManager();
             List<TokenCodeEntity> entityList = em
@@ -119,7 +154,6 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                     em.remove(entity);
                 }
                 em.flush();
-                em.clear();
             }
         } catch (NoResultException ignored) {
 
@@ -155,6 +189,8 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public void persistCode(TokenCodeRepresentation tokenCode, TokenCodeType tokenCodeType, MessageSendResult sendResult) {
+        // PhoneMessageService sends first; no provider HTTP call holds this lock.
+        lockTokenMutations();
         // 只清理1小时前的历史记录：最近1小时内的记录必须保留，isAbusing 依赖它们统计发送频次。
         // 若在此处全量删除（或发送前调用 removeCode），表中任意时刻至多1行，一小时防滥用上限将永远不会触发。
         // 校验成功时 removeCode 仍会清空该号码该类型的全部记录，不会长期堆积。
@@ -230,7 +266,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public boolean validateCode(PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType) {
-        TokenCodeEntity tokenCode = currentProcessEntity(phoneNumber, tokenCodeType);
+        TokenCodeEntity tokenCode = currentProcessForMutation(phoneNumber, tokenCodeType);
         if (tokenCode == null) {
             return false;
         }
@@ -250,7 +286,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public boolean validateCode(UserModel user, PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType) {
-        TokenCodeEntity tokenCode = currentProcessEntity(phoneNumber, tokenCodeType);
+        TokenCodeEntity tokenCode = currentProcessForMutation(phoneNumber, tokenCodeType);
         if (tokenCode == null) {
             return false;
         }
@@ -272,7 +308,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         TokenCodeType tokenCodeType = TokenCodeType.VERIFY;
         logger.info(String.format("valid %s , phone: %s", tokenCodeType, phoneNumber.getFullPhoneNumber()));
 
-        TokenCodeEntity tokenCode = currentProcessEntity(phoneNumber, tokenCodeType);
+        TokenCodeEntity tokenCode = currentProcessForMutation(phoneNumber, tokenCodeType);
         if (tokenCode == null) {
             throw new BadRequestException(String.format("There is no valid ongoing %s process",
                     tokenCodeType.getLabel()));

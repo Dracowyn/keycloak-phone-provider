@@ -106,7 +106,7 @@ public class VerificationCodeResource {
         }
 
         try {
-            UserModel user = auth.user();
+            UserModel user = auth.getUser();
             getTokenCodeService().setUserPhoneNumberByCode(user, phoneNumber, code);
             return ResponseBuilder.noContent();
         } catch (ForbiddenException e) {
@@ -142,7 +142,7 @@ public class VerificationCodeResource {
             return ResponseBuilder.error(ErrorCode.PHONE_UNSET_NOT_ALLOWED);
         }
 
-        UserModel user = auth.user();
+        UserModel user = auth.getUser();
 
         // 检查邮箱是否已验证
         if (!user.isEmailVerified()) {

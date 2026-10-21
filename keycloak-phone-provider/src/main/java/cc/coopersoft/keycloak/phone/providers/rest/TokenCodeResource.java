@@ -158,8 +158,8 @@ public class TokenCodeResource {
                 .detail("area_code", phoneNumber.getAreaCode());
 
         // 如果有已认证的用户，记录用户信息
-        if (auth != null && auth.user() != null) {
-            eventBuilder.user(auth.user());
+        if (auth != null && auth.getUser() != null) {
+            eventBuilder.user(auth.getUser());
         } else {
             // 对于注册和验证类型，尝试根据手机号查找用户
             UserModel user = UserUtils.findUserByPhone(session.users(), session.getContext().getRealm(), phoneNumber);
