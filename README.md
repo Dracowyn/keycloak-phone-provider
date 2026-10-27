@@ -9,7 +9,7 @@ Keycloak 26 版本。
 
 本插件运行环境要求：
 
-+ Keycloak 26.x.x（当前基线 26.6.4）
++ Keycloak 26.x.x（当前基线 26.8.1）
 + Java 17 或 21（编译目标为 Java 17，推荐运行在 21）
 
 ## 项目前端
@@ -53,8 +53,8 @@ cp target/providers/*.jar $KEYCLOAK_HOME/providers/
 在keycloak根目录下conf/keycloak.conf添加以下信息：
 
 ```properties
-# 短信发送服务商
-spi-phone-provider-config-sender-service=Aliyun
+# 短信发送服务商（对应 provider ID，不区分大小写；未部署时拒绝发送，不会回退到其他实现）
+spi-phone-provider-config-sender-service=aliyun
 # 验证码有效期（秒）
 spi-phone-provider-config-token-expires=300
 # 默认区号
@@ -144,6 +144,8 @@ spi-captcha-service-tencent-allow-disaster-ticket=false
 在 **Clients > $YOUR_CLIENT > Authentication Flow Overrides** 或 **Authentication > Bindings** 下：
 将 Direct Grant Flow 设置为 'Direct grant everybody with phone'
 
+只有当前 realm 的认证流程中启用了 `everybody-phone-authenticator` 执行器（且所在父流程未禁用），`/sms/authentication-code` 才允许为未注册号码发送 OTP；其他情况下仍返回 `USER_NOT_FOUND`。人机验证、重发冷却和小时配额检查保持不变。
+
 #### 重置凭据
 
 待编写
@@ -160,6 +162,7 @@ spi-captcha-service-tencent-allow-disaster-ticket=false
   在 'Registration Fast By Phone Registration Form > Actions > Add execution' 中添加 'Registration Phone As Username
   Creation'
   将此项移动到第一位
+  使用 `RegistrationPhoneAsUserNameCreation` 前，必须在 **Realm Settings > User Profile** 中声明 `phoneNumber` 属性，否则注册时该属性会被丢弃。
 
 + 将手机号添加到配置文件：
   在 'Registration Fast By Phone Registration Form > Actions > Add execution' 中添加 'Phone Validation'
@@ -398,7 +401,22 @@ grant_type=password&phone_number=$PHONE_NUMBER&code=$VERIFICATION_CODE&client_id
 
 ### 版本更新说明
 
-**Keycloak 26 升级（当前）**:
+**v2.2.0（当前）**:
+
+- 🔒 修复伪造 `SMS_OTP_ANSWERED` Cookie 即可绕过短信第二因子的问题：Cookie 改为 Keycloak 签名令牌，绑定 realm、用户与凭据（旧 Cookie 失效，用户需重新验证一次）
+- 🔒 修复 Everybody 直授流程与注册表单的验证码可重放、不计失败次数的问题，所有入口统一一次性消费
+- 🔒 修复连续输错 5 次会清空发送记录、绕过重发冷却与小时配额的问题
+- 🔒 修复极验 3.0 宕机状态进程级共享、一个用户初始化失败即放行所有人的问题
+- 🔒 `VERIFY_PHONE_OR_EMAIL` 改为按 `phoneNumberVerified` 判断；短信服务商未部署时拒绝发送，不再静默回退到 `dummy`
+- 🐞 腾讯云 `DescribeCaptchaResult` 始终发送协议必填的 `CaptchaType=9`，旧 `captchaType` 配置不再控制请求，非 `9` 值只记录警告（`9` 不是滑块等验证码类型枚举）
+- 🐞 极验 v3 初始化接口补齐 `success`、`gt`、`challenge`、`new_captcha`，v4 响应不变
+- 🐞 阿里云短信仅在响应 `Code=OK` 时视为发送成功；国际号码保留区号
+- ✅ 启用自动开户认证执行器时，新号码可获取 OTP
+- 🧹 删除未使用的 `PhoneNumber(JsonNode)` 构造器；验证码实体 `hashCode`/`equals` 支持空 id
+- ⬆️ 基线升级到 Keycloak 26.8.1，BouncyCastle 随之升级到 1.86；腾讯云 SDK、Lombok、org.json 等升级到各主版本内最新
+- 🧪 新增 Testcontainers 安全回归测试（`SecurityFixesIT`），覆盖 Cookie 伪造、验证码重放与频控
+
+**v2.1.0 · Keycloak 26 升级**:
 
 - ✅ 基线从 Keycloak 25.x 升级到 26.6.4
 - ✅ 清理 26.x 弃用 API：`AuthResult.getUser()` → `user()`、`JsonNode.fields()` → `properties()`
@@ -409,7 +427,7 @@ grant_type=password&phone_number=$PHONE_NUMBER&code=$VERIFICATION_CODE&client_id
 - 🔒 验证码比对改为常量时间比较（`MessageDigest.isEqual`），避免时序侧信道
 - 🛡️ 腾讯云验证码新增前端"容灾票据"识别与 `allowDisasterTicket` 开关，详见上文配置说明与 [API_MIGRATION_GUIDE.md](./API_MIGRATION_GUIDE.md)
 - 🐞 修复凭据数据（credentialData）手工拼接 JSON 导致漏写 `areaCode`、结构错误的问题
-- 🐞 修复腾讯云 `captchaType` 被硬编码 `9` 覆盖、配置项不生效的问题
+- 🐞 ~~修复腾讯云 `captchaType` 被硬编码 `9` 覆盖、配置项不生效的问题~~（该修改有误，已在 2.2.0 更正）
 - 🧵 修复区号缓存、极验服务状态、`JsonUtils` 的线程安全问题
 - ⬆️ 升级依赖：BouncyCastle、阿里云 SDK、org.json、Lombok 等
 - 🪶 移除 okhttp 依赖（改用 JDK 原生解析 `redirect_uri` 查询参数），核心 jar 由约 3.1MB 缩减至约 156KB

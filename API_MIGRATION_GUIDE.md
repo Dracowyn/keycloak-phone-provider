@@ -153,7 +153,21 @@ HTTP/1.1 400 Bad Request
 }
 ```
 
-**说明**: `CaptchaConfigResponse` 不再保留 `success` 兼容字段（无论极验还是腾讯云配置响应均没有该字段）；`geetestId` 与 `captchaAppId` 当前均取自极验后端返回的同一个 `gt` 值。
+**说明**: `CaptchaConfigResponse` 不再保留 `success` 兼容字段（无论极验还是腾讯云配置响应均没有该字段）；`geetestId` 与 `captchaAppId` 当前均取自极验后端返回的同一个 `gt` 值。上例为极验 4.0（`version=4`）的响应。
+
+**极验 3.0**（默认 `version=3`）：前端 `initGeetest` 需要初始化数据，因此在上述三个字段之外，额外原样返回极验 register 结果中的 `success`、`gt`、`challenge`、`new_captcha`：
+```json
+{
+  "success": 1,
+  "gt": "xxx",
+  "challenge": "0123456789abcdef0123456789abcdef",
+  "new_captcha": true,
+  "type": "geetest",
+  "geetestId": "xxx",
+  "captchaAppId": "xxx"
+}
+```
+`success=0` 表示极验服务不可用、后端已进入宕机模式，前端应以 `offline: true` 初始化。
 
 #### 腾讯云配置
 
@@ -174,15 +188,38 @@ HTTP/1.1 400 Bad Request
 
 ### 验证码防爆破（累计失败作废）
 
-同一手机号、同一验证码类型下，当前有效的验证码一旦累计校验失败达到 **5 次**（`TokenCodeServiceImpl.MAX_VERIFICATION_ATTEMPTS`），该验证码会被立即删除（作废），用户必须重新发送验证码才能继续校验，不能再对旧验证码继续尝试。
+同一手机号、同一验证码类型下，当前有效的验证码一旦累计校验失败达到 **5 次**（`TokenCodeServiceImpl.MAX_VERIFICATION_ATTEMPTS`），该验证码会被立即置为过期（作废），用户必须重新发送验证码才能继续校验，不能再对旧验证码继续尝试。
 
 - 失败次数保存在数据库新增的 `ATTEMPTS` 列（表 `PHONE_MESSAGE_TOKEN_CODE`）。
 - 该列由 Liquibase changeSet `token-code-attempts`（`token-code-changelog-attempts.xml`，已被主 changelog `token-code-changelog.xml` include）自动迁移新增，changeSet 带 `columnExists` 前置条件，随插件启动自动执行，**无需人工手动改库**。
-- 对最终用户可见的表现：连续输错验证码 5 次后，即使第 6 次输入的是正确的验证码也会失败（因为验证码记录已被删除），接口会返回 `VERIFICATION_CODE_EXPIRED`（`update-profile` 场景）或校验直接返回不通过（其他 `validateCode` 调用方场景），用户需要重新获取验证码。
+- 对最终用户可见的表现：连续输错验证码 5 次后，即使第 6 次输入的是正确的验证码也会失败，接口会返回 `VERIFICATION_CODE_EXPIRED`（`update-profile` 场景）或校验直接返回不通过（其他 `validateCode` 调用方场景），用户需要重新获取验证码。
+- 作废只针对当前这条验证码，**不会清空发送记录**：重发冷却（`RESEND_TOO_SOON`）与每小时发送上限（`SMS_SEND_LIMIT_EXCEEDED`）照常生效。此前作废时会删除该号码的全部记录，攻击者每输错 5 次就能换来一轮新的发送额度。
 
-### 常量时间比较
+### 常量时间比较与验证码一次性消费
 
 验证码比对由 `TokenCodeServiceImpl#codesMatch` 使用 `MessageDigest.isEqual` 进行常量时间比较，避免 `String#equals` 因逐字符提前返回而产生的时序侧信道，防止攻击者通过响应时间差异逐位猜解验证码。
+
+所有校验入口（含 `everybody-phone-authenticator` 直授流程与 `registration-phone` / `registration-phone-or-email` 注册表单）统一走 `TokenCodeService`：失败计入错误次数，通过后验证码即被消费，同一验证码不能重复使用。注册表单在 `validate` 阶段只校验不消费，`success` 阶段才消费，因此表单其他字段校验失败时用户无需重新获取验证码。
+
+### 短信 OTP 免验证 Cookie（`SMS_OTP_ANSWERED`）
+
+`sms-otp-authenticator` 校验通过后写入的 `SMS_OTP_ANSWERED` Cookie 由固定值 `true` 改为 Keycloak 签名令牌，绑定 realm、用户与短信 OTP 凭据，有效期取认证器配置 `cookie.max.age`（缺省或非法时为 3600 秒）。Cookie 带 `HttpOnly; SameSite=Lax`，HTTPS 下另带 `Secure`。
+
+- 旧版本写入的 `SMS_OTP_ANSWERED=true` Cookie 升级后不再被接受，用户下次登录需重新完成一次短信验证。
+- 伪造的 Cookie、他人的 Cookie、凭据被删除后的 Cookie、realm 密钥轮换前签发的 Cookie 均会被忽略。
+
+### 短信服务商不再静默回退
+
+`spi-phone-provider-config-sender-service` 指定的服务商未部署时，此前会静默改用任意一个已部署的实现（可能落到只打日志的 `dummy`）。现在会拒绝发送并记录错误日志，发送接口返回失败。配置值匹配不区分大小写（`Aliyun` 与 `aliyun` 等价）。未配置时默认值仍为 `dummy`，生产环境务必显式配置。
+
+### 号码验证状态判定
+
+- 必需操作 `VERIFY_PHONE_OR_EMAIL` 改为以 `phoneNumberVerified=true` 判断手机号已验证，不再只看 `phoneNumber` 属性是否存在。号码被其他账户重新验证后，原账户会被置为未验证并重新要求验证。
+- 删除了恒为 `true` 的 `UserUtils.isDuplicatePhoneAllowed()` 占位开关，行为不变：注册时拒绝已被占用的号码，验证号码时取消同号码其他账户的验证状态，保证同一号码至多一个已验证账户。
+
+### 极验 3.0 宕机模式
+
+极验 3.0 的宕机（failback）状态改为按 challenge 登记在 Keycloak 一次性对象存储中（10 分钟有效、校验即消费），只有本服务在初始化失败时本地生成的 challenge 才走宕机校验。此前该状态是进程级共享变量，一个用户初始化失败会让其他用户的极验校验被放行。
 
 ## 腾讯云验证码容灾票据
 
