@@ -35,7 +35,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>伪造 / 他人的 {@code SMS_OTP_ANSWERED} Cookie 不能跳过短信第二因子，合法签发的 Cookie 仍可免验证；</li>
  *   <li>Everybody 直授流程中同一验证码不能重放；</li>
  *   <li>连续输错 5 次只作废当前验证码，不清空重发冷却；</li>
- *   <li>注册表单 validate 阶段只校验不消费，其他字段出错时验证码仍可用，注册成功后号码被标记为已验证。</li>
+ *   <li>注册表单 validate 阶段只校验不消费，其他字段出错时验证码仍可用，注册成功后号码被标记为已验证；</li>
+ *   <li>首次配置短信 MFA：无号码用户可绑定新号码，已有已验证号码的用户不能借此换号。</li>
  * </ul>
  */
 class SecurityFixesIT {
@@ -204,6 +205,84 @@ class SecurityFixesIT {
         assertThat(credentials.findValuesAsText("type")).contains("password");
     }
 
+    // ---------- 首次配置短信 MFA ----------
+
+    @Test
+    @DisplayName("首次配置短信 MFA：无号码用户验证码通过后绑定号码并创建凭据")
+    void configureSmsOtpBindsPhoneForUserWithoutNumber() throws Exception {
+        String phone = "13900000007";
+        Browser browser = new Browser();
+        HttpResponse<String> configPage = browser.followLoginActions(browser.loginWithPassword("grace", "grace-pass"));
+        assertThat(configPage.body()).as("应进入短信 MFA 配置页: %s", describe(configPage))
+                .contains("kc-sms-otp-config-form");
+
+        int logMark = keycloak.getLogs().length();
+        assertThat(sendCode("verification-code", phone).statusCode()).isEqualTo(200);
+        String code = awaitCodeFromLog(logMark);
+        assertThat(code).isNotNull();
+
+        String wrong = code.equals("000000") ? "111111" : "000000";
+        HttpResponse<String> rejected = browser.submitForm(configPage.body(),
+                Map.of("areaCode", "86", "phoneNumber", phone, "smsCode", wrong));
+        assertThat(rejected.statusCode()).isEqualTo(200);
+        assertThat(rejected.body()).contains("kc-sms-otp-config-form").contains("kc-error");
+
+        HttpResponse<String> done = browser.submitForm(rejected.body(),
+                Map.of("areaCode", "86", "phoneNumber", phone, "smsCode", code));
+        assertThat(done.statusCode()).as("正确验证码应完成配置: %s", describe(done)).isEqualTo(302);
+        assertThat(done.headers().firstValue("Location").orElse("")).startsWith(REDIRECT_URI);
+
+        JsonNode grace = findUser("grace");
+        assertThat(grace.path("attributes").path("phoneNumber").get(0).asText()).isEqualTo("+86 " + phone);
+        assertThat(grace.path("attributes").path("phoneNumberVerified").get(0).asText()).isEqualTo("true");
+        assertThat(credentialTypes(grace)).contains("phone-otp");
+    }
+
+    @Test
+    @DisplayName("首次配置短信 MFA：已有已验证号码的用户不能换成其他号码，用原号码可完成配置")
+    void configureSmsOtpKeepsExistingVerifiedNumber() throws Exception {
+        String own = "13900000008";
+        String other = "13900000009";
+        Browser browser = new Browser();
+        HttpResponse<String> configPage = browser.followLoginActions(browser.loginWithPassword("henry", "henry-pass"));
+        assertThat(configPage.body()).as("应进入短信 MFA 配置页: %s", describe(configPage))
+                .contains("kc-sms-otp-config-form");
+
+        int logMark = keycloak.getLogs().length();
+        assertThat(sendCode("verification-code", other).statusCode()).isEqualTo(200);
+        String otherCode = awaitCodeFromLog(logMark);
+        assertThat(otherCode).isNotNull();
+
+        HttpResponse<String> rejected = browser.submitForm(configPage.body(),
+                Map.of("areaCode", "86", "phoneNumber", other, "smsCode", otherCode));
+        assertThat(rejected.statusCode()).isEqualTo(200);
+        assertThat(rejected.body()).contains("smsOtpPhoneNumberMismatch");
+
+        JsonNode unchanged = findUser("henry");
+        assertThat(unchanged.path("attributes").path("phoneNumber").get(0).asText()).isEqualTo("+86 " + own);
+        assertThat(credentialTypes(unchanged)).doesNotContain("phone-otp");
+
+        logMark = keycloak.getLogs().length();
+        assertThat(sendCode("verification-code", own).statusCode()).isEqualTo(200);
+        String ownCode = awaitCodeFromLog(logMark);
+        HttpResponse<String> done = browser.submitForm(rejected.body(),
+                Map.of("areaCode", "86", "phoneNumber", own, "smsCode", ownCode));
+        assertThat(done.statusCode()).as("原号码应完成配置: %s", describe(done)).isEqualTo(302);
+        assertThat(credentialTypes(findUser("henry"))).contains("phone-otp");
+    }
+
+    private static JsonNode findUser(String username) throws Exception {
+        JsonNode users = JSON.readTree(adminGet("/admin/realms/" + REALM + "/users?exact=true&username=" + username,
+                adminToken()).body());
+        assertThat(users).hasSize(1);
+        return users.get(0);
+    }
+
+    private static List<String> credentialTypes(JsonNode user) throws Exception {
+        return JSON.readTree(adminGet("/admin/realms/" + REALM + "/users/" + user.get("id").asText() + "/credentials",
+                adminToken()).body()).findValuesAsText("type");
+    }
+
     // ---------- realm setup ----------
 
     private static void importRealm() throws Exception {
@@ -216,6 +295,10 @@ class SecurityFixesIT {
                   "browserFlow": "sms-browser",
                   "registrationAllowed": true,
                   "registrationFlow": "phone-registration",
+                  "requiredActions": [{
+                    "alias": "CONFIGURE_SMS_OTP", "name": "Configure SMS OTP", "providerId": "CONFIGURE_SMS_OTP",
+                    "enabled": true, "defaultAction": false, "priority": 100, "config": {}
+                  }],
                   "directGrantFlow": "everybody-direct",
                   "clients": [{
                     "clientId": "%2$s",
@@ -231,7 +314,7 @@ class SecurityFixesIT {
                         {"authenticator": "auth-username-password-form", "requirement": "REQUIRED", "priority": 10,
                          "authenticatorFlow": false, "userSetupAllowed": false},
                         {"authenticator": "sms-otp-authenticator", "requirement": "REQUIRED", "priority": 20,
-                         "authenticatorFlow": false, "userSetupAllowed": false}
+                         "authenticatorFlow": false, "userSetupAllowed": true}
                       ]
                     },
                     {
@@ -260,11 +343,12 @@ class SecurityFixesIT {
                       ]
                     }
                   ],
-                  "users": [%3$s, %4$s, %5$s, %6$s, %7$s]
+                  "users": [%3$s, %4$s, %5$s, %6$s, %7$s, %8$s, %9$s]
                 }
                 """.formatted(REALM, CLIENT_ID,
                 user("alice", "13900000001"), user("bob", "13900000002"), user("carol", "13900000003"),
-                user("dave", "13900000004"), user("erin", "13900000005"));
+                user("dave", "13900000004"), user("erin", "13900000005"),
+                passwordOnlyUser("grace", null), passwordOnlyUser("henry", "13900000008"));
 
         HttpResponse<String> resp = http().send(HttpRequest.newBuilder(uri("/admin/realms"))
                         .header("Authorization", "Bearer " + adminToken())
@@ -308,6 +392,20 @@ class SecurityFixesIT {
                   ]
                 }
                 """.formatted(username, phone);
+    }
+
+    /** 只有密码凭据、尚未配置短信 MFA 的用户；phone 为 null 表示没有号码，否则为已验证号码。 */
+    private static String passwordOnlyUser(String username, String phone) {
+        String attributes = phone == null ? "{}"
+                : "{\"phoneNumber\": [\"+86 " + phone + "\"], \"phoneNumberVerified\": [\"true\"]}";
+        return """
+                {
+                  "username": "%1$s", "enabled": true,
+                  "email": "%1$s@example.com", "emailVerified": true, "firstName": "%1$s", "lastName": "it",
+                  "attributes": %2$s,
+                  "credentials": [{"type": "password", "value": "%1$s-pass", "temporary": false}]
+                }
+                """.formatted(username, attributes);
     }
 
     private static String adminToken() throws Exception {
@@ -366,6 +464,16 @@ class SecurityFixesIT {
 
         HttpResponse<String> get(String path) throws Exception {
             return send(HttpRequest.newBuilder(uri(path)).GET());
+        }
+
+        /** 跟随 Keycloak 内部的 login-actions 跳转（如进入必需操作页），不跟随回到客户端的重定向。 */
+        HttpResponse<String> followLoginActions(HttpResponse<String> resp) throws Exception {
+            String location = resp.headers().firstValue("Location").orElse("");
+            while (resp.statusCode() == 302 && location.contains("/login-actions/")) {
+                resp = send(HttpRequest.newBuilder(URI.create(location)).GET());
+                location = resp.headers().firstValue("Location").orElse("");
+            }
+            return resp;
         }
 
         HttpResponse<String> loginWithPassword(String username, String password) throws Exception {

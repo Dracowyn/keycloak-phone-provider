@@ -217,6 +217,18 @@ HTTP/1.1 400 Bad Request
 - 必需操作 `VERIFY_PHONE_OR_EMAIL` 改为以 `phoneNumberVerified=true` 判断手机号已验证，不再只看 `phoneNumber` 属性是否存在。号码被其他账户重新验证后，原账户会被置为未验证并重新要求验证。
 - 删除了恒为 `true` 的 `UserUtils.isDuplicatePhoneAllowed()` 占位开关，行为不变：注册时拒绝已被占用的号码，验证号码时取消同号码其他账户的验证状态，保证同一号码至多一个已验证账户。
 
+### 首次配置短信 MFA（`CONFIGURE_SMS_OTP`）
+
+自 2.2.1 起，必需操作 `CONFIGURE_SMS_OTP` 按用户当前号码状态处理提交的号码与验证码（验证码通过 `/sms/verification-code` 获取）：
+
+- **没有号码或号码未验证**：验证码通过即绑定该号码（写入 `phoneNumber`、置 `phoneNumberVerified=true`，同号码其他账户取消验证），然后创建短信 OTP 凭据。此前这类用户必定失败，无法完成配置。
+- **已有已验证号码**：只能用该号码开启；提交其他号码返回错误 `smsOtpPhoneNumberMismatch`，号码与凭据均不变动。换号须走更新手机号流程。
+
+前端主题需要：
+
+- 在 `messages_*.properties` 中补充 `smsOtpPhoneNumberMismatch` 文案（例如"请使用账户已绑定的手机号开启短信验证"）。
+- 失败时页面仍为 `login-sms-otp-config.ftl`（此前错误地渲染 `login-update-phone-number.ftl`），并回填 `areaCode`、`phoneNumber` 属性。
+
 ### 极验 3.0 宕机模式
 
 极验 3.0 的宕机（failback）状态改为按 challenge 登记在 Keycloak 一次性对象存储中（10 分钟有效、校验即消费），只有本服务在初始化失败时本地生成的 challenge 才走宕机校验。此前该状态是进程级共享变量，一个用户初始化失败会让其他用户的极验校验被放行。
