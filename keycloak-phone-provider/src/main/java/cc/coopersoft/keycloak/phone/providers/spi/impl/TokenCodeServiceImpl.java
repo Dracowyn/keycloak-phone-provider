@@ -10,7 +10,6 @@ import cc.coopersoft.keycloak.phone.providers.jpa.TokenCodeEntity;
 import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
-import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
 import org.keycloak.credential.CredentialModel;
@@ -27,6 +26,7 @@ import jakarta.ws.rs.ForbiddenException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -118,17 +118,35 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                 for (TokenCodeEntity entity : entityList) {
                     em.remove(entity);
                 }
+                // 不能 em.clear()：该 EntityManager 由 Keycloak 共享，清空会把同一事务中的用户等实体一并游离，
+                // 之后对用户的修改（如注册流程后续表单动作）会静默丢失
                 em.flush();
-                em.clear();
             }
         } catch (NoResultException ignored) {
 
         }
     }
 
+    /**
+     * 获取最近发送的一条记录（不论验证码是否已过期或因输错被作废），用于重发冷却判断。
+     * 只看有效验证码的话，输错作废后冷却期会被立即解除。
+     */
+    private TokenCodeEntity latestProcessEntity(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
+        return getEntityManager()
+                .createNamedQuery("getAll", TokenCodeEntity.class)
+                .setParameter("realmId", getRealm().getId())
+                .setParameter("areaCode", phoneNumber.getAreaCode())
+                .setParameter("phoneNumber", phoneNumber.getPhoneNumber())
+                .setParameter("type", tokenCodeType.name())
+                .getResultStream()
+                .filter(e -> e.getCreatedAt() != null)
+                .max(Comparator.comparing(TokenCodeEntity::getCreatedAt))
+                .orElse(null);
+    }
+
     @Override
     public boolean canResend(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
-        TokenCodeEntity entity = currentProcessEntity(phoneNumber, tokenCodeType);
+        TokenCodeEntity entity = latestProcessEntity(phoneNumber, tokenCodeType);
         if (entity == null) {
             return true;
         }
@@ -205,22 +223,35 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     /**
      * 记录一次验证码校验失败：递增 attempts；一旦达到 {@link #MAX_VERIFICATION_ATTEMPTS} 上限，
-     * 立即删除该手机号该类型下的验证码记录，使其作废，用户须重新发送。
+     * 只把当前这条验证码置为过期使其作废，用户须重新发送。
+     * <p>
+     * 不能删除该号码的全部记录：最近1小时的记录是 {@link #isAbusing} 与 {@link #canResend} 的频控依据，
+     * 删除后攻击者每猜错5次就能换来一轮新的发送额度。
      * <p>
      * 仅应在真正的验证入口（非委托重载）调用，避免重复计数。
      *
-     * @param tokenCode     当前验证码托管实体
-     * @param phoneNumber   手机号
-     * @param tokenCodeType 验证码类型
+     * @param tokenCode 当前验证码托管实体
      */
-    private void registerFailedAttempt(TokenCodeEntity tokenCode, PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
+    private void registerFailedAttempt(TokenCodeEntity tokenCode) {
         int attempts = (tokenCode.getAttempts() == null ? 0 : tokenCode.getAttempts()) + 1;
+        tokenCode.setAttempts(attempts);
         if (attempts >= MAX_VERIFICATION_ATTEMPTS) {
-            removeCode(phoneNumber, tokenCodeType);
-        } else {
-            tokenCode.setAttempts(attempts);
-            getEntityManager().flush();
+            tokenCode.setExpiresAt(LocalDateTime.now().minusSeconds(1));
         }
+        getEntityManager().flush();
+    }
+
+    @Override
+    public TokenCodeRepresentation checkCode(PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType) {
+        TokenCodeEntity tokenCode = currentProcessEntity(phoneNumber, tokenCodeType);
+        if (tokenCode == null) {
+            return null;
+        }
+        if (!codesMatch(tokenCode.getCode(), code)) {
+            registerFailedAttempt(tokenCode);
+            return null;
+        }
+        return getTokenCodeRepresentation(tokenCode);
     }
 
     @Override
@@ -230,12 +261,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public boolean validateCode(PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType) {
-        TokenCodeEntity tokenCode = currentProcessEntity(phoneNumber, tokenCodeType);
-        if (tokenCode == null) {
-            return false;
-        }
-        if (!codesMatch(tokenCode.getCode(), code)) {
-            registerFailedAttempt(tokenCode, phoneNumber, tokenCodeType);
+        if (checkCode(phoneNumber, code, tokenCodeType) == null) {
             return false;
         }
 
@@ -255,7 +281,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
             return false;
         }
         if (!codesMatch(tokenCode.getCode(), code)) {
-            registerFailedAttempt(tokenCode, phoneNumber, tokenCodeType);
+            registerFailedAttempt(tokenCode);
             return false;
         }
         if (user.getAttributeStream("phoneNumber")
@@ -279,7 +305,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         }
 
         if (!codesMatch(tokenCode.getCode(), code)) {
-            registerFailedAttempt(tokenCode, phoneNumber, tokenCodeType);
+            registerFailedAttempt(tokenCode);
             throw new ForbiddenException("Code does not match with expected value");
         }
 
@@ -304,16 +330,22 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public void tokenValidated(UserModel user, PhoneNumber phoneNumber, String tokenCodeId) {
-        //解绑重复的手机号
-        if (UserUtils.isDuplicatePhoneAllowed()) {
-            session.users().searchForUserByUserAttributeStream(session.getContext().getRealm(), "phoneNumber",
-                            phoneNumber.getFullPhoneNumber()).filter(u -> !u.getId().equals(user.getId()))
-                    .forEach(u -> {
-                        logger.info(String.format("User %s also has phone number %s. Un-verifying.", u.getId(),
-                                phoneNumber.getFullPhoneNumber()));
-                        u.setSingleAttribute("phoneNumberVerified", "false");
-                    });
+        // 消费验证码：通过 checkCode 校验后必须在此作废，否则同一验证码可被重放
+        if (tokenCodeId != null) {
+            TokenCodeEntity tokenCode = getEntityManager().find(TokenCodeEntity.class, tokenCodeId);
+            if (tokenCode != null) {
+                removeCode(phoneNumber, TokenCodeType.valueOf(tokenCode.getType()));
+            }
         }
+
+        // 解绑重复的手机号：同一号码至多一个已验证账户，否则按号码登录/重置时账户选择不确定
+        session.users().searchForUserByUserAttributeStream(session.getContext().getRealm(), "phoneNumber",
+                        phoneNumber.getFullPhoneNumber()).filter(u -> !u.getId().equals(user.getId()))
+                .forEach(u -> {
+                    logger.info(String.format("User %s also has phone number %s. Un-verifying.", u.getId(),
+                            phoneNumber.getFullPhoneNumber()));
+                    u.setSingleAttribute("phoneNumberVerified", "false");
+                });
 
         user.setSingleAttribute("phoneNumberVerified", "true");
         user.setSingleAttribute("phoneNumber", phoneNumber.getFullPhoneNumber());
@@ -346,7 +378,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                     tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
         }
 
-        TokenCodeRepresentation tokenCode = currentProcess(phoneNumber, tokenCodeType);
+        TokenCodeEntity tokenCode = latestProcessEntity(phoneNumber, tokenCodeType);
         if (tokenCode == null) {
             throw new BadRequestException(String.format("There is no valid %s in process for %s",
                     tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));

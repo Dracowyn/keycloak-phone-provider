@@ -1,6 +1,9 @@
 package cc.coopersoft.keycloak.phone.providers.spi.impl;
 
 import cc.coopersoft.keycloak.phone.providers.spi.CaptchaService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.geetest.sdk.GeetestLib;
 import com.geetest.sdk.GeetestLibResult;
 import lombok.Setter;
@@ -36,10 +39,11 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
     private static final String UNKNOWN_USER = "unknown";
     private static final String V4_API_DOMAIN = "https://gcaptcha4.geetest.com";
 
-    // 服务状态标志，1表示正常。
-    // 注意：极验3.0的 failback 状态本应按认证会话隔离，此处为跨请求共享的近似实现；
-    // volatile 仅保证可见性，无法消除并发用户间的竞争。极验3.0已不推荐使用。
-    private static volatile int serverStatus = 1;
+    // 极验3.0宕机模式按 challenge 登记：只有本服务在 register 失败时本地生成并登记过的 challenge，
+    // 才允许走 failValidate（仅校验非空）。不能用进程级共享状态，否则一个用户初始化失败会让所有用户的校验被放行。
+    private static final String OFFLINE_CHALLENGE_KEY_PREFIX = "geetest-v3-offline:";
+    private static final long OFFLINE_CHALLENGE_LIFESPAN_SECONDS = 10 * 60;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final KeycloakSession session;
     @Setter
@@ -111,12 +115,12 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
         GeetestLib gtLib = new GeetestLib(geetestId, geetestKey);
         GeetestLibResult result;
 
-        // 根据服务器状态选择不同的验证方式
-        if (serverStatus == 1) {
+        // 根据该 challenge 初始化时的服务状态选择验证方式；宕机登记一次性消费，不可重复使用
+        if (session.singleUseObjects().remove(offlineChallengeKey(challenge)) != null) {
+            result = gtLib.failValidate(challenge, validate, seccode);
+        } else {
             Map<String, String> paramMap = createParamMap(user);
             result = gtLib.successValidate(challenge, validate, seccode, paramMap);
-        } else {
-            result = gtLib.failValidate(challenge, validate, seccode);
         }
         return result.getStatus() == 1;
     }
@@ -263,8 +267,33 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
 
         // 如果是3.0版本，返回验证结果
         GeetestLibResult result = getGeetestLibResult(user, geetestId, geetestKey);
-        serverStatus = result.getStatus();
+        if (result.getStatus() != 1) {
+            String challenge = extractChallenge(result.getData());
+            if (challenge != null) {
+                session.singleUseObjects().put(offlineChallengeKey(challenge), OFFLINE_CHALLENGE_LIFESPAN_SECONDS, Map.of("offline", "1"));
+            }
+        }
         return result.getData();
+    }
+
+    static String offlineChallengeKey(String challenge) {
+        return OFFLINE_CHALLENGE_KEY_PREFIX + challenge;
+    }
+
+    /**
+     * 从 register 返回的 JSON 中取出 challenge，缺失或解析失败时返回 {@code null}。
+     */
+    static String extractChallenge(String registerData) {
+        if (registerData == null || registerData.isEmpty()) {
+            return null;
+        }
+        try {
+            JsonNode challenge = MAPPER.readTree(registerData).get("challenge");
+            return challenge == null || challenge.asText().isEmpty() ? null : challenge.asText();
+        } catch (JsonProcessingException e) {
+            log.warn("解析极验初始化结果失败", e);
+            return null;
+        }
     }
 
     /**

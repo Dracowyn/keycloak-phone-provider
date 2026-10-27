@@ -17,7 +17,9 @@ import org.keycloak.models.UserModel;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ForbiddenException;
+import java.time.LocalDateTime;
 
 /**
  * 短信验证码服务实现类
@@ -43,6 +45,11 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
      * 服务名称
      */
     private final String service;
+
+    /**
+     * 配置的服务名称（未找到对应实现时 service 为空串）
+     */
+    private final String configuredService;
 
     /**
      * 访问短信验证码过期时间
@@ -74,12 +81,11 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
 
         // 获取配置服务对象
         ConfigService config = session.getProvider(ConfigService.class);
+        // 只使用显式配置的短信服务商；不回退到任意已部署实现，避免配置拼错时静默落到 dummy（只打日志不发短信）
+        this.configuredService = config.getSenderService();
         this.service = session.listProviderIds(MessageSenderService.class)
-                .stream().filter(s -> s.equals(config.getSenderService()))
-                .findFirst().orElse(
-                        session.listProviderIds(MessageSenderService.class)
-                                .stream().findFirst().orElse("")
-                );
+                .stream().filter(s -> s.equalsIgnoreCase(configuredService))
+                .findFirst().orElse("");
         this.tokenExpiresIn = config.getTokenExpires();
         this.locationEnable = config.isLocationEnable();
         this.locationAppcode = config.getLocationAppcode();
@@ -120,12 +126,23 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
 
         // 判断是否可以重新发送短信验证码
         if (!getTokenCodeService().canResend(phoneNumber, type)) {
-            TokenCodeRepresentation current = getTokenCodeService().currentProcess(phoneNumber, type);
             result = new MessageSendResult(-2).setError("rateTime", "Please wait for minutes.");
-            if (current != null && current.getResendExpiresAt() != null) {
-                result.setResendExpires(current.getResendExpiresAt());
+            try {
+                LocalDateTime resendExpires = getTokenCodeService().getResendExpires(phoneNumber, type);
+                if (resendExpires != null) {
+                    result.setResendExpires(resendExpires);
+                }
+            } catch (BadRequestException e) {
+                // 冷却恰好在两次查询之间结束，按无冷却时间返回即可
+                logger.debug("Resend cooldown ended concurrently", e);
             }
             return result;
+        }
+
+        if (service.isEmpty()) {
+            logger.error(String.format("SMS sender service '%s' is not deployed; refusing to send %s code to %s",
+                    configuredService, type.getLabel(), phoneNumber.getFullPhoneNumber()));
+            return new MessageSendResult(-1).setError("senderServiceUnavailable", "SMS sender service is not available");
         }
 
         // 注意：发送前不删除旧验证码记录——最近1小时的记录要留给 isAbusing 做频控计数

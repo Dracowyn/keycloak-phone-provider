@@ -58,6 +58,18 @@ public interface TokenCodeService extends Provider {
     void persistCode(TokenCodeRepresentation tokenCode, TokenCodeType tokenCodeType, MessageSendResult sendResult);
 
     /**
+     * 校验验证码但不消费：常量时间比较，失败计入错误次数（达到上限即作废）。
+     * 通过后调用方必须再调用 {@link #tokenValidated} 消费该验证码，否则可被重放。
+     * 适用于校验与落库分两步完成的场景（如注册表单 validate / success）。
+     *
+     * @param phoneNumber   手机号
+     * @param code          验证码
+     * @param tokenCodeType 验证码类型
+     * @return 校验通过时返回该验证码，否则返回 {@code null}
+     */
+    TokenCodeRepresentation checkCode(PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType);
+
+    /**
      * 验证验证码
      *
      * @param phoneNumber 手机号
@@ -114,11 +126,12 @@ public interface TokenCodeService extends Provider {
     void cleanUpAction(UserModel user);
 
     /**
-     * 验证码验证通过
+     * 验证码验证通过：消费 {@code tokenCodeId} 对应的验证码，并把手机号标记为该用户已验证
+     * （同号码的其他账户取消验证）。
      *
      * @param user        用户
      * @param phoneNumber 手机号
-     * @param tokenCodeId 验证码ID
+     * @param tokenCodeId 验证码ID（来自 {@link #checkCode}）；验证码已在别处消费时传 {@code null}
      */
     void tokenValidated(UserModel user, PhoneNumber phoneNumber, String tokenCodeId);
 

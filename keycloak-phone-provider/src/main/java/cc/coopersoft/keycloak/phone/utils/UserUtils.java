@@ -45,9 +45,4 @@ public class UserUtils {
                 realm, "phoneNumber", phoneNumber.getFullPhoneNumber());
         return singleUser(users.filter(u -> !u.getId().equals(notIs)).collect(Collectors.toList()));
     }
-
-    public static boolean isDuplicatePhoneAllowed(){
-        //TODO isDuplicatePhoneAllowed
-        return true;
-    }
 }

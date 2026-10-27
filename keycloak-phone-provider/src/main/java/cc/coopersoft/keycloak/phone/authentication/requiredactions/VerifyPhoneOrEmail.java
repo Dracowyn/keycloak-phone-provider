@@ -55,8 +55,17 @@ public class VerifyPhoneOrEmail extends VerifyEmail implements RequiredActionPro
     }
 
     private boolean isUserPhoneNumberVerified(UserModel user) {
-        String phoneNumber = user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER);
-        return phoneNumber != null && !phoneNumber.trim().isEmpty();
+        return isPhoneNumberVerified(user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER),
+                user.getFirstAttribute("phoneNumberVerified"));
+    }
+
+    /**
+     * 号码存在且 {@code phoneNumberVerified=true} 才算已验证。
+     * 同号码被其他账户重新验证后，原账户只会被置为 {@code phoneNumberVerified=false} 而保留号码，
+     * 只看号码是否存在会把这类账户误判为已验证。
+     */
+    static boolean isPhoneNumberVerified(String phoneNumber, String phoneNumberVerified) {
+        return phoneNumber != null && !phoneNumber.trim().isEmpty() && "true".equals(phoneNumberVerified);
     }
 
     @Override

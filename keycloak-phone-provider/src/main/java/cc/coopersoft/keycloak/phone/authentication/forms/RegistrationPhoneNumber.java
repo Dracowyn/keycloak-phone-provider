@@ -132,7 +132,7 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
             return;
         }
 
-        if (UserUtils.isDuplicatePhoneAllowed() && UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber) != null) {
+        if (UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber) != null) {
             formData.remove(PhoneConstants.FIELD_PHONE_NUMBER);
             context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
             errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.PHONE_EXISTS));
@@ -142,9 +142,10 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
         }
 
         String verificationCode = formData.getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
-        TokenCodeRepresentation tokenCode = getTokenCodeService(session).currentProcess(phoneNumber,
-                TokenCodeType.REGISTRATION);
-        if (Validation.isBlank(verificationCode) || tokenCode == null || !tokenCode.getCode().equals(verificationCode)) {
+        // 只校验不消费（常量时间比较 + 失败计数）；success() 中 tokenValidated 消费，避免其他字段校验失败时验证码已作废
+        TokenCodeRepresentation tokenCode = Validation.isBlank(verificationCode) ? null
+                : getTokenCodeService(session).checkCode(phoneNumber, verificationCode, TokenCodeType.REGISTRATION);
+        if (tokenCode == null) {
             context.error(Errors.INVALID_REGISTRATION);
             formData.remove(PhoneConstants.FIELD_VERIFICATION_CODE);
             errors.add(new FormMessage(PhoneConstants.FIELD_VERIFICATION_CODE, PhoneConstants.SMS_CODE_MISMATCH));

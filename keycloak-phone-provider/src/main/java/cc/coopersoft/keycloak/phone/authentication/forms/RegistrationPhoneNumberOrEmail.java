@@ -145,8 +145,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
         context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
 
         // 验证手机号是否已被使用
-        if (UserUtils.isDuplicatePhoneAllowed() &&
-                UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber) != null) {
+        if (UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber) != null) {
             formData.remove(PhoneConstants.FIELD_PHONE_NUMBER);
             context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
             errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.PHONE_EXISTS));
@@ -160,19 +159,18 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
     private void validateSmsCode(ValidationContext context, MultivaluedMap<String, String> formData,
                                  List<FormMessage> errors, KeycloakSession session, PhoneNumber phoneNumber) {
         String verificationCode = formData.getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
-        TokenCodeRepresentation tokenCode = getTokenCodeService(session)
-                .currentProcess(phoneNumber, TokenCodeType.REGISTRATION);
+        // 只校验不消费（常量时间比较 + 失败计数）；success() 中 tokenValidated 消费，避免其他字段校验失败时验证码已作废
+        TokenCodeRepresentation tokenCode = Validation.isBlank(verificationCode) ? null
+                : getTokenCodeService(session).checkCode(phoneNumber, verificationCode, TokenCodeType.REGISTRATION);
 
-        if (Validation.isBlank(verificationCode) || tokenCode == null ||
-                !tokenCode.getCode().equals(verificationCode)) {
+        if (tokenCode == null) {
             context.error(INVALID_SMS_CODE);
             context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
             errors.add(new FormMessage(PhoneConstants.FIELD_VERIFICATION_CODE, PhoneConstants.SMS_CODE_MISMATCH));
+            return;
         }
 
-        if (tokenCode != null) {
-            context.getSession().setAttribute(PhoneConstants.FIELD_TOKEN_ID, tokenCode.getId());
-        }
+        context.getSession().setAttribute(PhoneConstants.FIELD_TOKEN_ID, tokenCode.getId());
     }
 
     private void validateEmailRegistration(ValidationContext context, MultivaluedMap<String, String> formData,
