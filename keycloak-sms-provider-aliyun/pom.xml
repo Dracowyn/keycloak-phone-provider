@@ -5,7 +5,7 @@
   <parent>
     <artifactId>keycloak-phone-provider-parent</artifactId>
     <groupId>cc.coopersoft</groupId>
-    <version>2.1.0</version>
+    <version>2.2.0</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
@@ -19,7 +19,7 @@
       <scope>provided</scope>
     </dependency>
     <!--
-      BouncyCastle 一律不打进 fat jar，运行时统一使用 Keycloak 自带的 BC（26.7.0 为 1.84）。
+      BouncyCastle 一律不打进 fat jar，运行时统一使用 Keycloak 自带的 BC（26.8.1 为 1.86）。
       若将版本不一致的 BC 类捆绑进 provider jar，与 Keycloak lib 中的 BC 经类加载器混用后
       会在 production 模式启动时抛 NoSuchFieldError（如 IANAObjectIdentifiers.id_alg_xmss_hashsig）。
       此处 provided 仅满足编译期与依赖声明，版本与 Keycloak 自带版本保持一致。
@@ -27,7 +27,7 @@
     <dependency>
       <groupId>org.bouncycastle</groupId>
       <artifactId>bcpkix-jdk18on</artifactId>
-      <version>1.84</version>
+      <version>1.86</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -42,6 +42,18 @@
         </exclusion>
       </exclusions>
     </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>${assertj.version}</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -49,7 +61,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.15.0</version>
+        <version>3.16.0</version>
         <configuration>
           <source>${maven.compiler.source}</source>
           <target>${maven.compiler.target}</target>

@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class PhoneProviderIT {
 
-    private static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.7.0";
+    private static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.1";
     private static final Pattern CODE_IN_LOG = Pattern.compile(">>>\\s*([0-9]{4,8})");
 
     private static KeycloakContainer keycloak;
@@ -73,7 +73,7 @@ class PhoneProviderIT {
     }
 
     @Test
-    @DisplayName("容器能带着全部 provider 在 Keycloak 26.6.4 下正常启动（SPI/JPA/Liquibase 加载）")
+    @DisplayName("容器能带着全部 provider 在目标 Keycloak 版本下正常启动（SPI/JPA/Liquibase 加载）")
     void containerStartsWithProviders() {
         // 若任一 SPI、JPA 实体或 changelog 在目标版本下加载失败，start-dev 的构建会失败、容器无法就绪，
         // startKeycloak() 会直接抛异常。因此“容器处于运行态”本身就是最有价值的运行时冒烟断言。

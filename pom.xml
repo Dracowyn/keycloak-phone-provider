@@ -7,22 +7,22 @@
     <groupId>cc.coopersoft</groupId>
     <artifactId>keycloak-phone-provider-parent</artifactId>
     <packaging>pom</packaging>
-    <version>2.1.0</version>
+    <version>2.2.0</version>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
-        <version.keycloak>26.7.0</version.keycloak>
-        <lombok.version>1.18.46</lombok.version>
+        <version.keycloak>26.8.1</version.keycloak>
+        <lombok.version>1.18.48</lombok.version>
         <maven.resources.plugin.version>3.5.0</maven.resources.plugin.version>
         <maven.dependency.plugin.version>3.11.0</maven.dependency.plugin.version>
         <maven.assembly.plugin.version>3.8.0</maven.assembly.plugin.version>
         <!-- 测试依赖版本统一：keycloak-phone-provider 与 keycloak-phone-provider-it 两个模块共用 -->
         <junit.version>5.14.4</junit.version>
         <assertj.version>3.27.7</assertj.version>
-        <surefire.version>3.5.6</surefire.version>
-        <failsafe.version>3.5.6</failsafe.version>
+        <surefire.version>3.6.1</surefire.version>
+        <failsafe.version>3.6.1</failsafe.version>
     </properties>
 
     <modules>
