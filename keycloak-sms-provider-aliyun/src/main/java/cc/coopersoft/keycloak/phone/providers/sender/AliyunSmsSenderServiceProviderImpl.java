@@ -11,12 +11,18 @@ import com.aliyuncs.IAcsClient;
 import com.aliyuncs.exceptions.ClientException;
 import com.aliyuncs.http.MethodType;
 import com.aliyuncs.profile.DefaultProfile;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.models.RealmModel;
 
 public class AliyunSmsSenderServiceProviderImpl implements MessageSenderService {
     private static final Logger logger = Logger.getLogger(AliyunSmsSenderServiceProviderImpl.class);
+    private static final ObjectMapper JSON = new ObjectMapper()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final Config.Scope config;
     private final RealmModel realm;
     private final IAcsClient client;
@@ -53,19 +59,51 @@ public class AliyunSmsSenderServiceProviderImpl implements MessageSenderService 
         request.setSysVersion("2017-05-25");
         request.setSysAction("SendSms");
         request.putQueryParameter("RegionId", "cn-hangzhou");
-        request.putQueryParameter("PhoneNumbers", phoneNumber.getPhoneNumber());
+        request.putQueryParameter("PhoneNumbers", formatPhoneNumber(phoneNumber));
         request.putQueryParameter("SignName", signName);
         request.putQueryParameter("TemplateCode", templateId);
 
         request.putQueryParameter("TemplateParam", String.format("{\"code\":\"%s\"}", code));
         try {
             CommonResponse response = client.getCommonResponse(request);
-            logger.info(response.getData());
-            return new MessageSendResult(1).setResendExpires(60).setExpires(expires);
+            return parseResponse(response.getData(), expires);
         } catch (ClientException e) {
             logger.error(e.getMessage());
             return new MessageSendResult(-1).setError(e.getErrCode(), e.getErrMsg());
         }
+    }
+
+    static String formatPhoneNumber(PhoneNumber phoneNumber) {
+        // 国内号码不带区号，国际号码拼接区号且不添加 + 或 00 前缀。
+        return "86".equals(phoneNumber.getAreaCode()) ? phoneNumber.getPhoneNumber()
+                : phoneNumber.getAreaCode() + phoneNumber.getPhoneNumber();
+    }
+
+    static MessageSendResult parseResponse(String data, int expires) {
+        // HTTP 请求成功不代表短信发送成功，必须检查阿里云业务码。
+        if (data == null || data.isBlank()) {
+            return responseParseError("阿里云响应为空");
+        }
+        try {
+            JsonNode response = JSON.readTree(data);
+            if (response == null || !response.isObject() || !response.path("Code").isTextual()) {
+                return responseParseError("阿里云响应缺少字符串 Code");
+            }
+            String code = response.get("Code").textValue();
+            if ("OK".equals(code)) {
+                return new MessageSendResult(1).setResendExpires(60).setExpires(expires);
+            }
+            String message = response.path("Message").asText(null);
+            logger.warnf("阿里云短信发送失败，Code=%s，Message=%s", code, message);
+            return new MessageSendResult(-1).setError(code, message);
+        } catch (JsonProcessingException e) {
+            return responseParseError("阿里云响应 JSON 无效：" + e.getOriginalMessage());
+        }
+    }
+
+    private static MessageSendResult responseParseError(String message) {
+        logger.error(message);
+        return new MessageSendResult(-1).setError("ALIYUN_RESPONSE_PARSE_ERROR", message);
     }
 
     @Override

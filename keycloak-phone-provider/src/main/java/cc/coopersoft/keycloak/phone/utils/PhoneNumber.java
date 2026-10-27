@@ -1,6 +1,5 @@
 package cc.coopersoft.keycloak.phone.utils;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Getter;
 import lombok.Setter;
 import org.keycloak.services.validation.Validation;
@@ -29,13 +28,6 @@ public class PhoneNumber {
                 .orElse(formData.getFirst(PhoneConstants.LEGACY_FIELD_AREA_CODE));
         this.phoneNumber = Optional.ofNullable(formData.getFirst(PhoneConstants.FIELD_PHONE_NUMBER))
                 .orElse(formData.getFirst(PhoneConstants.LEGACY_FIELD_PHONE_NUMBER));
-    }
-
-    public PhoneNumber(JsonNode jsonNode) {
-        this.areaCode = jsonNode.get(PhoneConstants.FIELD_AREA_CODE)
-                .asText(jsonNode.get(PhoneConstants.LEGACY_FIELD_AREA_CODE).asText());
-        this.phoneNumber = jsonNode.get(PhoneConstants.FIELD_PHONE_NUMBER)
-                .asText(jsonNode.get(PhoneConstants.LEGACY_FIELD_PHONE_NUMBER).asText());
     }
 
     public void setAreaCode(int areaCode) {

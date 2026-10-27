@@ -132,11 +132,11 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
 
             // 构建请求
             DescribeCaptchaResultRequest request = new DescribeCaptchaResultRequest();
-            // CaptchaType是可选的，腾讯云会根据CaptchaAppId自动识别验证码类型。
-            // 仅当显式配置captchaType时才设置，避免用硬编码值覆盖自动识别结果。
+            // CaptchaType是协议必填固定值9，不代表滑块、文字点选等验证码类型。
+            request.setCaptchaType(9L);
             String captchaTypeStr = config.get("captchaType");
-            if (captchaTypeStr != null) {
-                request.setCaptchaType(Long.parseLong(captchaTypeStr));
+            if (captchaTypeStr != null && !"9".equals(captchaTypeStr)) {
+                log.warn("captchaType旧配置不再控制请求参数，DescribeCaptchaResult固定使用CaptchaType=9");
             }
             request.setTicket(ticket);
             request.setRandstr(randstr);

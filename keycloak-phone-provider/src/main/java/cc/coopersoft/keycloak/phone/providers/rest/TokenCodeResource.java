@@ -1,5 +1,6 @@
 package cc.coopersoft.keycloak.phone.providers.rest;
 
+import cc.coopersoft.keycloak.phone.authentication.authenticators.directgrant.EverybodyPhoneAuthenticatorFactory;
 import cc.coopersoft.keycloak.phone.providers.constants.ErrorCode;
 import cc.coopersoft.keycloak.phone.providers.constants.MessageSendResult;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
@@ -23,8 +24,11 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
+import org.keycloak.models.AuthenticationExecutionModel;
+import org.keycloak.models.AuthenticationFlowModel;
 import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager;
@@ -33,6 +37,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_FORM_URLENCODED;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
@@ -140,10 +145,11 @@ public class TokenCodeResource {
             return ResponseBuilder.error(ErrorCode.AREA_NOT_SUPPORTED);
         }
 
-        // 检查用户是否存在（非注册和验证类型需要）
+        // 检查用户是否存在；启用自动开户流程时允许新号码获取 OTP
         if (tokenCodeType != TokenCodeType.REGISTRATION && tokenCodeType != TokenCodeType.VERIFY) {
             UserModel user = UserUtils.findUserByPhone(session.users(), session.getContext().getRealm(), phoneNumber);
-            if (user == null) {
+            if (user == null && !(tokenCodeType == TokenCodeType.OTP &&
+                    isEverybodyPhoneAuthenticationEnabled(session.getContext().getRealm()))) {
                 return ResponseBuilder.error(ErrorCode.USER_NOT_FOUND);
             }
         }
@@ -219,6 +225,22 @@ public class TokenCodeResource {
 
             // 其余失败，返回通用错误响应
             return ResponseBuilder.error(ErrorCode.SMS_SEND_FAILED, result.getErrorMessage());
+        }
+    }
+
+    static boolean isEverybodyPhoneAuthenticationEnabled(RealmModel realm) {
+        try (Stream<AuthenticationFlowModel> flows = realm.getAuthenticationFlowsStream()) {
+            return flows.filter(AuthenticationFlowModel::isTopLevel)
+                    .anyMatch(flow -> hasEverybodyPhoneAuthenticator(realm, flow.getId()));
+        }
+    }
+
+    private static boolean hasEverybodyPhoneAuthenticator(RealmModel realm, String flowId) {
+        try (Stream<AuthenticationExecutionModel> executions = realm.getAuthenticationExecutionsStream(flowId)) {
+            return executions.filter(AuthenticationExecutionModel::isEnabled)
+                    .anyMatch(execution -> execution.isAuthenticatorFlow()
+                            ? hasEverybodyPhoneAuthenticator(realm, execution.getFlowId())
+                            : EverybodyPhoneAuthenticatorFactory.PROVIDER_ID.equals(execution.getAuthenticator()));
         }
     }
 

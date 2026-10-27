@@ -42,7 +42,7 @@ keycloak-captcha-provider-tencent/
 - 实现获取前端密钥方法 `getFrontendKey()`：
   - 返回CaptchaAppId供前端初始化
   - JSON格式响应
-- 支持可配置的验证码类型
+- DescribeCaptchaResult 协议参数 CaptchaType 固定为9；旧 captchaType 配置不控制请求，非"9"值仅告警
 - 支持API错误时的降级策略（fallbackOnError）
 
 #### TencentCaptchaServiceProviderFactory.java
@@ -148,7 +148,7 @@ spi-captcha-service-tencent-secret-key=xxxxxxxxxxxxx
 spi-captcha-service-tencent-captcha-app-id=123456789
 spi-captcha-service-tencent-app-secret-key=xxxxxxxxxxxxx
 
-# 可选：验证码类型（通常不需要配置，腾讯云会自动识别）
+# 协议固定发送 CaptchaType=9；旧 captchaType 配置不控制请求，非"9"值仅告警
 # spi-captcha-service-tencent-captcha-type=9
 ```
 
@@ -162,6 +162,7 @@ spi-captcha-service-tencent-captcha-app-id=123456789
 spi-captcha-service-tencent-app-secret-key=xxxxxxxxxxxxx
 
 # 可选配置
+# 旧captchaType配置不再控制请求；协议固定使用9，非"9"值仅告警
 # spi-captcha-service-tencent-captcha-type=9
 spi-captcha-service-tencent-endpoint=captcha.tencentcloudapi.com
 spi-captcha-service-tencent-fallback-on-error=false

@@ -6,6 +6,7 @@ import cc.coopersoft.keycloak.phone.providers.spi.CaptchaService;
 import cc.coopersoft.keycloak.phone.utils.RegexUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.CacheControl;
 import jakarta.ws.rs.core.MediaType;
@@ -80,11 +81,7 @@ public class GeetestResource {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode jsonNode = mapper.readTree(geetestCode);
 
-            CaptchaConfigResponse response = CaptchaConfigResponse.builder()
-                    .type("geetest")
-                    .geetestId(jsonNode.has("gt") ? jsonNode.get("gt").asText() : null)
-                    .captchaAppId(jsonNode.has("gt") ? jsonNode.get("gt").asText() : null)
-                    .build();
+            Object response = mapFrontendConfig(jsonNode);
 
             Response.ResponseBuilder responseBuilder = Response.status(Response.Status.OK)
                     .entity(response)
@@ -100,6 +97,23 @@ public class GeetestResource {
             log.error("获取极验验证码配置失败", e);
             return ResponseBuilder.serverError("获取极验验证码配置失败");
         }
+    }
+
+    static Object mapFrontendConfig(JsonNode jsonNode) {
+        String gt = jsonNode.has("gt") ? jsonNode.get("gt").asText() : null;
+        if (jsonNode.has("challenge") && jsonNode.isObject()) {
+            // v3 初始化必须保留 success、gt、challenge、new_captcha 四个字段，同时保留统一配置字段供现有前端识别
+            ObjectNode response = ((ObjectNode) jsonNode).deepCopy();
+            response.put("type", "geetest");
+            response.put("geetestId", gt);
+            response.put("captchaAppId", gt);
+            return response;
+        }
+        return CaptchaConfigResponse.builder()
+                .type("geetest")
+                .geetestId(gt)
+                .captchaAppId(gt)
+                .build();
     }
 
     /**

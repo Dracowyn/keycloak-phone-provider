@@ -37,8 +37,9 @@ spi-captcha-service-tencent-secret-key=YOUR_SECRET_KEY
 spi-captcha-service-tencent-captcha-app-id=YOUR_CAPTCHA_APP_ID
 spi-captcha-service-tencent-app-secret-key=YOUR_APP_SECRET_KEY
 
-# 可选配置（一般不需要配置以下参数）
+# 旧captchaType配置不再控制请求；协议固定使用9，非"9"值仅告警
 # spi-captcha-service-tencent-captcha-type=9
+# 可选配置
 spi-captcha-service-tencent-endpoint=captcha.tencentcloudapi.com
 spi-captcha-service-tencent-fallback-on-error=false
 ```
@@ -54,7 +55,7 @@ export KC_SPI_CAPTCHA_SERVICE_TENCENT_SECRET_KEY=YOUR_SECRET_KEY
 export KC_SPI_CAPTCHA_SERVICE_TENCENT_CAPTCHA_APP_ID=YOUR_CAPTCHA_APP_ID
 export KC_SPI_CAPTCHA_SERVICE_TENCENT_APP_SECRET_KEY=YOUR_APP_SECRET_KEY
 
-# 可选配置（一般不需要）
+# 旧captchaType配置不再控制请求；协议固定使用9，非"9"值仅告警
 # export KC_SPI_CAPTCHA_SERVICE_TENCENT_CAPTCHA_TYPE=9
 ```
 
@@ -69,7 +70,7 @@ bin/kc.sh start \
   --spi-captcha-service-tencent-secret-key=YOUR_SECRET_KEY \
   --spi-captcha-service-tencent-captcha-app-id=YOUR_CAPTCHA_APP_ID \
   --spi-captcha-service-tencent-app-secret-key=YOUR_APP_SECRET_KEY
-  # 可选: --spi-captcha-service-tencent-captcha-type=9
+  # 无需配置 captchaType：请求协议固定使用9，旧配置为非"9"值时仅告警
 ```
 
 ### 配置参数说明
@@ -80,14 +81,14 @@ bin/kc.sh start \
 | `secretKey` | 是 | 腾讯云API密钥Key | 无 |
 | `captchaAppId` | 是 | 验证码应用ID（在腾讯云控制台创建） | 无 |
 | `appSecretKey` | 是 | 验证码应用密钥 | 无 |
-| `captchaType` | 否 | 验证码类型（可选，腾讯云会自动识别）<br>如需明确指定：9=滑块，其他类型见腾讯云文档 | 自动识别 |
+| `captchaType` | 否 | 旧配置不再控制请求；DescribeCaptchaResult 协议必填固定值为9，非"9"旧配置仅告警（包括非数字） | 固定9 |
 | `endpoint` | 否 | API端点 | captcha.tencentcloudapi.com |
 | `fallbackOnError` | 否 | API错误时是否放行验证 | false |
 
 **注意**: 
 - 验证码类型（滑块、文字点选、图形点选等）在腾讯云控制台创建验证码应用时配置
-- `captchaType` 参数通常不需要配置，腾讯云会根据 `captchaAppId` 自动识别验证码类型
-- 只有在特殊情况下需要强制指定类型时，才配置 `captchaType` 参数
+- `CaptchaType=9` 是 DescribeCaptchaResult 协议必填固定值，不是滑块、文字点选等类型枚举
+- 无论是否保留旧 `captchaType` 配置，请求始终发送9；未配置或值为"9"不告警，其他值仅告警，不影响请求参数
 
 ### 切换验证码服务
 
