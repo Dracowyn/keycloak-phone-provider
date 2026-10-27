@@ -236,9 +236,28 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         int attempts = (tokenCode.getAttempts() == null ? 0 : tokenCode.getAttempts()) + 1;
         tokenCode.setAttempts(attempts);
         if (attempts >= MAX_VERIFICATION_ATTEMPTS) {
-            tokenCode.setExpiresAt(LocalDateTime.now().minusSeconds(1));
+            expireActiveCodes(tokenCode);
         }
         getEntityManager().flush();
+    }
+
+    /**
+     * 作废该号码该类型下所有未过期的验证码（只改过期时间，记录保留给频控）。
+     * 只作废当前一条的话，更早发出且未过期的验证码会重新成为 currentProcess，被继续校验。
+     */
+    private void expireActiveCodes(TokenCodeEntity tokenCode) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime expired = now.minusSeconds(1);
+        getEntityManager()
+                .createNamedQuery("getAll", TokenCodeEntity.class)
+                .setParameter("realmId", tokenCode.getRealmId())
+                .setParameter("areaCode", tokenCode.getAreaCode())
+                .setParameter("phoneNumber", tokenCode.getPhoneNumber())
+                .setParameter("type", tokenCode.getType())
+                .getResultStream()
+                .filter(e -> e.getExpiresAt() != null && !e.getExpiresAt().isBefore(now))
+                .forEach(e -> e.setExpiresAt(expired));
+        tokenCode.setExpiresAt(expired);
     }
 
     @Override

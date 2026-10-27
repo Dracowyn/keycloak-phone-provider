@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -159,6 +160,33 @@ class SecurityFixesIT {
         assertThat(phoneGrant(phone, code).statusCode()).as("输错 5 次后正确验证码也应作废").isEqualTo(401);
         HttpResponse<String> resend = sendAuthenticationCode(phone);
         assertThat(resend.statusCode()).as("冷却不应被清空: %s", resend.body()).isEqualTo(429);
+    }
+
+    @Test
+    @DisplayName("输错 5 次作废全部未过期验证码，更早发出的验证码不会重新生效")
+    void maxFailedAttemptsExpiresOlderCodesToo() throws Exception {
+        String phone = "13900000010";
+        int logMark = keycloak.getLogs().length();
+        assertThat(sendAuthenticationCode(phone).statusCode()).isEqualTo(200);
+        String older = awaitCodeFromLog(logMark);
+        assertThat(older).isNotNull();
+
+        // 等 dummy 的 60 秒重发冷却结束，再发第二条；第一条仍在 300 秒有效期内
+        Thread.sleep(Duration.ofSeconds(61).toMillis());
+        logMark = keycloak.getLogs().length();
+        HttpResponse<String> second = sendAuthenticationCode(phone);
+        assertThat(second.statusCode()).as("冷却结束后重发: %s", second.body()).isEqualTo(200);
+        String latest = awaitCodeFromLog(logMark);
+        assertThat(latest).isNotNull();
+
+        String wrong = Stream.of("000000", "111111", "222222")
+                .filter(c -> !c.equals(older) && !c.equals(latest)).findFirst().orElseThrow();
+        for (int i = 0; i < 5; i++) {
+            assertThat(phoneGrant(phone, wrong).statusCode()).isEqualTo(401);
+        }
+
+        assertThat(phoneGrant(phone, older).statusCode()).as("更早的验证码不应重新生效").isEqualTo(401);
+        assertThat(phoneGrant(phone, latest).statusCode()).as("最新验证码已作废").isEqualTo(401);
     }
 
     // ---------- 注册表单 ----------
@@ -343,12 +371,13 @@ class SecurityFixesIT {
                       ]
                     }
                   ],
-                  "users": [%3$s, %4$s, %5$s, %6$s, %7$s, %8$s, %9$s]
+                  "users": [%3$s, %4$s, %5$s, %6$s, %7$s, %8$s, %9$s, %10$s]
                 }
                 """.formatted(REALM, CLIENT_ID,
                 user("alice", "13900000001"), user("bob", "13900000002"), user("carol", "13900000003"),
                 user("dave", "13900000004"), user("erin", "13900000005"),
-                passwordOnlyUser("grace", null), passwordOnlyUser("henry", "13900000008"));
+                passwordOnlyUser("grace", null), passwordOnlyUser("henry", "13900000008"),
+                user("ivan", "13900000010"));
 
         HttpResponse<String> resp = http().send(HttpRequest.newBuilder(uri("/admin/realms"))
                         .header("Authorization", "Bearer " + adminToken())

@@ -326,6 +326,7 @@ public class TokenCodeResource {
             return false;
         }
         ClientModel client = this.session.getContext().getRealm().getClientByClientId(id);
-        return client != null && client.validateSecret(secret);
+        // 只有已启用的机密客户端可凭密钥跳过人机验证；公共客户端不应持有密钥，禁用客户端不应再被信任
+        return client != null && client.isEnabled() && !client.isPublicClient() && client.validateSecret(secret);
     }
 }
