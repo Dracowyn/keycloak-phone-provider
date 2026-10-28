@@ -16,14 +16,12 @@ keycloak-captcha-provider-tencent/
 ├── README.md
 ├── IMPLEMENTATION_SUMMARY.md
 └── src/main/
-    ├── java/cc/coopersoft/keycloak/phone/providers/
-    │   ├── spi/impl/
-    │   │   ├── TencentCaptchaServiceImpl.java
-    │   │   └── TencentCaptchaServiceProviderFactory.java
-    │   └── rest/
-    │       ├── TencentCaptchaResource.java
-    │       ├── TencentCaptchaResourceProvider.java
-    │       └── TencentCaptchaResourceProviderFactory.java
+    ├── java/cc/coopersoft/keycloak/phone/providers/captcha/tencent/
+    │   ├── TencentCaptchaServiceImpl.java
+    │   ├── TencentCaptchaServiceProviderFactory.java
+    │   ├── TencentCaptchaResource.java
+    │   ├── TencentCaptchaResourceProvider.java
+    │   └── TencentCaptchaResourceProviderFactory.java
     └── resources/META-INF/services/
         ├── cc.coopersoft.keycloak.phone.providers.spi.CaptchaServiceProviderFactory
         └── org.keycloak.services.resource.RealmResourceProviderFactory

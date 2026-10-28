@@ -1,1 +1,1 @@
-cc.coopersoft.keycloak.phone.providers.spi.impl.GoogleRecaptchaServiceProviderFactory
+cc.coopersoft.keycloak.phone.providers.captcha.recaptcha.GoogleRecaptchaServiceProviderFactory

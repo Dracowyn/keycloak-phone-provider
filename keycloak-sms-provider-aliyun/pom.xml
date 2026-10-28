@@ -40,6 +40,49 @@
           <groupId>org.bouncycastle</groupId>
           <artifactId>*</artifactId>
         </exclusion>
+        <!-- 这些库运行时由 Keycloak 提供，不打进 fat jar；升级 version.keycloak 时需核对其版本与兼容性。 -->
+        <exclusion>
+          <groupId>com.google.code.gson</groupId>
+          <artifactId>gson</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>com.google.errorprone</groupId>
+          <artifactId>error_prone_annotations</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.httpcomponents</groupId>
+          <artifactId>httpclient</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.httpcomponents</groupId>
+          <artifactId>httpcore</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>commons-codec</groupId>
+          <artifactId>commons-codec</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.commons</groupId>
+          <artifactId>commons-lang3</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-api</artifactId>
+        </exclusion>
+        <!--
+          本模块只用 CommonRequest + getCommonResponse，CommonRequest 默认 JSON；
+          JAXB 只在带 @XmlRootElement 的类型化响应 + XML 格式时使用，因此不捆绑 jaxb-runtime。
+          它的 txw2 / istack / stax-ex 与 Keycloak 自带版本同包不同版，会造成类加载冲突；
+          升级 version.keycloak 或调整请求/响应格式时需重新核对。
+        -->
+        <exclusion>
+          <groupId>org.glassfish.jaxb</groupId>
+          <artifactId>jaxb-runtime</artifactId>
+        </exclusion>
       </exclusions>
     </dependency>
     <dependency>

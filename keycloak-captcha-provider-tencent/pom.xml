@@ -29,6 +29,25 @@
       <groupId>com.tencentcloudapi</groupId>
       <artifactId>tencentcloud-sdk-java-captcha</artifactId>
       <version>3.2.29</version>
+      <exclusions>
+        <!-- 这些库运行时由 Keycloak 提供，不打进 fat jar；升级 version.keycloak 时需核对其版本与兼容性。 -->
+        <exclusion>
+          <groupId>com.google.code.gson</groupId>
+          <artifactId>gson</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.apache.commons</groupId>
+          <artifactId>commons-lang3</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>commons-io</groupId>
+          <artifactId>commons-io</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
 

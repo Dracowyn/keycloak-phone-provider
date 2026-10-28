@@ -1,1 +1,1 @@
-cc.coopersoft.keycloak.phone.providers.sender.DummyMessageSenderServiceProviderFactory
+cc.coopersoft.keycloak.phone.providers.sender.dummy.DummyMessageSenderServiceProviderFactory

@@ -1,1 +1,1 @@
-cc.coopersoft.keycloak.phone.providers.spi.impl.TencentCaptchaServiceProviderFactory
+cc.coopersoft.keycloak.phone.providers.captcha.tencent.TencentCaptchaServiceProviderFactory
