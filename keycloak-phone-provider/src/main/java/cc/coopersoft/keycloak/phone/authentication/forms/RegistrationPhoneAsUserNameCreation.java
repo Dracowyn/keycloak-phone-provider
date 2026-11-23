@@ -2,6 +2,7 @@ package cc.coopersoft.keycloak.phone.authentication.forms;
 
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
@@ -25,6 +26,7 @@ import org.keycloak.userprofile.UserProfileProvider;
 import jakarta.ws.rs.core.MultivaluedMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * replace  org.keycloak.authentication.forms.RegistrationUserCreation.java
@@ -114,15 +116,24 @@ public class RegistrationPhoneAsUserNameCreation implements FormActionFactory, F
         List<FormMessage> errors = new ArrayList<>();
         context.getEvent().detail(Details.REGISTER_METHOD, "form");
 
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
-        context.getEvent().detail(Details.USERNAME, phoneNumber.getPhoneNumber());
+        PhoneNumber rawPhoneNumber = new PhoneNumber(formData);
+        context.getEvent().detail(Details.USERNAME, rawPhoneNumber.getPhoneNumber());
 
-        if (phoneNumber.isEmpty()) {
+        if (rawPhoneNumber.isEmpty()) {
             errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.MISSING_PHONE_NUMBER));
             context.error(Errors.INVALID_REGISTRATION);
             context.validationError(formData, errors);
             return;
         }
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(rawPhoneNumber);
+        if (normalized.isEmpty()) {
+            errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.INVALID_PHONE_NUMBER));
+            context.error(Errors.INVALID_REGISTRATION);
+            context.validationError(formData, errors);
+            return;
+        }
+        PhoneNumber phoneNumber = normalized.get();
+        context.getEvent().detail(Details.USERNAME, phoneNumber.getPhoneNumber());
 
         if (UserUtils.isPhoneNumberInUse(context.getSession().users(), context.getRealm(), phoneNumber)) {
             context.error(Errors.INVALID_REGISTRATION);
@@ -147,7 +158,9 @@ public class RegistrationPhoneAsUserNameCreation implements FormActionFactory, F
     public void success(FormContext context) {
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
 
-        String username = formData.getFirst(PhoneConstants.FIELD_PHONE_NUMBER);
+        // validate 阶段已校验过号码，用规范化后的纯数字号码，不用原样提交的值
+        String username = PhoneNumberInput.fromForm(formData).map(PhoneNumber::getPhoneNumber)
+                .orElseThrow(() -> new IllegalStateException("注册号码未通过校验却进入了 success 阶段"));
 
         context.getEvent().detail(Details.USERNAME, username)
                 .detail(Details.REGISTER_METHOD, "phone");

@@ -4,6 +4,7 @@ import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import cc.coopersoft.keycloak.phone.utils.StringUtils;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.keycloak.authentication.AuthenticationFlowContext;
@@ -18,6 +19,7 @@ import org.keycloak.services.messages.Messages;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.core.Response;
+import java.util.Optional;
 
 /**
  * {@link PhoneLoginForm} 与 {@link PhoneOrPasswordLoginForm} 共用的手机号登录逻辑。
@@ -123,11 +125,17 @@ final class PhoneLoginFormSupport {
 
         KeycloakSession session = context.getSession();
 
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
-        if (phoneNumber.isEmpty()) {
+        PhoneNumber rawPhoneNumber = new PhoneNumber(formData);
+        if (rawPhoneNumber.isEmpty()) {
             context.challenge(challenge(context, template, PhoneConstants.MISSING_PHONE_NUMBER, formData));
             return;
         }
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(rawPhoneNumber);
+        if (normalized.isEmpty()) {
+            context.challenge(challenge(context, template, PhoneConstants.INVALID_PHONE_NUMBER, formData));
+            return;
+        }
+        PhoneNumber phoneNumber = normalized.get();
         UserModel user = UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber);
         //用户不存在
         if (user == null) {

@@ -2,6 +2,7 @@ package cc.coopersoft.keycloak.phone.authentication.forms;
 
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import cc.coopersoft.keycloak.phone.utils.StringUtils;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
@@ -26,6 +27,7 @@ import jakarta.ws.rs.core.MultivaluedMap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFactory {
 
@@ -135,7 +137,18 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
                                            List<FormMessage> errors, KeycloakSession session, String eventError) {
         // 使用手机号注册
         formData.remove(PhoneConstants.FIELD_EMAIL);
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
+        PhoneNumber rawPhoneNumber = new PhoneNumber(formData);
+        context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, rawPhoneNumber.getFullPhoneNumber());
+        if (rawPhoneNumber.isEmpty()) {
+            errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.MISSING_PHONE_NUMBER));
+            return;
+        }
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(rawPhoneNumber);
+        if (normalized.isEmpty()) {
+            errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.INVALID_PHONE_NUMBER));
+            return;
+        }
+        PhoneNumber phoneNumber = normalized.get();
         context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
 
         // 验证手机号是否已被使用
@@ -262,7 +275,9 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
 
     private void handlePhoneRegistrationSuccess(FormContext context, UserModel user,
                                                 MultivaluedMap<String, String> formData) {
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
+        // validate 阶段已校验过号码，这里取同一个规范化结果
+        PhoneNumber phoneNumber = PhoneNumberInput.fromForm(formData)
+                .orElseThrow(() -> new IllegalStateException("注册号码未通过校验却进入了 success 阶段"));
 
         // 设置电子邮箱（如果有）
         String email = formData.getFirst(RegistrationPage.FIELD_EMAIL);

@@ -17,6 +17,11 @@ public class PhoneConstants {
     public static final String CREDENTIAL_TYPE_PASSWORD = "password";
 
     public static final String MISSING_PHONE_NUMBER = "requiredPhoneNumber";
+    /**
+     * 号码格式不合格时表单显示的消息 key。复用 Keycloak base 登录主题自带的 {@code error-invalid-value}
+     * （「无效值。」），不需要主题另补文案。
+     */
+    public static final String INVALID_PHONE_NUMBER = "error-invalid-value";
     public static final String MISSING_VERIFY_CODE = "requireSmsCode";
     public static final String PHONE_EXISTS = "phoneNumberExists";
     public static final String SMS_CODE_MISMATCH = "smsCodeMismatch";

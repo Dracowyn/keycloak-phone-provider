@@ -14,6 +14,8 @@ import cc.coopersoft.keycloak.phone.providers.spi.PhoneMessageService;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberMask;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -38,6 +40,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
@@ -126,21 +129,23 @@ public class TokenCodeResource {
     @Produces(APPLICATION_JSON)
     @Consumes(APPLICATION_FORM_URLENCODED)
     public Response sendTokenCode(MultivaluedMap<String, String> formData) {
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
+        PhoneNumber rawPhoneNumber = new PhoneNumber(formData);
 
         // 验证手机号
-        if (phoneNumber.isEmpty()) {
+        if (rawPhoneNumber.isEmpty()) {
             return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_REQUIRED);
         }
+
+        // 校验并规范化号码：后续频控、落库、调用短信服务商都用规范化结果，变体写法不能各算一个号码
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(rawPhoneNumber);
+        if (normalized.isEmpty()) {
+            return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_INVALID);
+        }
+        PhoneNumber phoneNumber = normalized.get();
 
         // 验证人机验证码
         if (!passesCaptcha(session, this.auth, formData)) {
             return ResponseBuilder.error(ErrorCode.CAPTCHA_REQUIRED);
-        }
-
-        // 验证区号格式（必须为1-4位纯数字，避免后续解析为int时抛出异常）
-        if (!phoneNumber.getAreaCode().matches("\\d{1,4}")) {
-            return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_INVALID);
         }
 
         // 验证区号
@@ -158,7 +163,7 @@ public class TokenCodeResource {
             }
         }
 
-        logger.info(String.format("请求发送 %s 验证码到 %s", tokenCodeType.name(), phoneNumber.getFullPhoneNumber()));
+        logger.infof("请求发送 %s 验证码到尾号 %s", tokenCodeType.name(), PhoneNumberMask.tail(phoneNumber));
 
         // 创建事件构建器来记录短信发送事件
         EventBuilder eventBuilder = new EventBuilder(session.getContext().getRealm(), session, session.getContext().getConnection())
@@ -344,11 +349,14 @@ public class TokenCodeResource {
     @Produces(APPLICATION_JSON)
     public Response getResendExpire(@QueryParam(PhoneConstants.FIELD_AREA_CODE) String areaCode,
                                     @QueryParam(PhoneConstants.FIELD_PHONE_NUMBER) String phoneNumberStr) {
-        PhoneNumber phoneNumber = new PhoneNumber(areaCode, phoneNumberStr);
-
-        if (phoneNumber.isEmpty()) {
+        if (new PhoneNumber(areaCode, phoneNumberStr).isEmpty()) {
             return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_REQUIRED);
         }
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(areaCode, phoneNumberStr);
+        if (normalized.isEmpty()) {
+            return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_INVALID);
+        }
+        PhoneNumber phoneNumber = normalized.get();
 
         TokenCodeService tokenCodeService = session.getProvider(TokenCodeService.class);
         try {
@@ -358,7 +366,8 @@ public class TokenCodeResource {
             ResendExpiresResponse response = ResendExpiresResponse.of(resendExpire);
             return ResponseBuilder.ok(response);
         } catch (BadRequestException e) {
-            logger.error("获取重发时间失败", e);
+            // 没有冷却中的记录是正常业务分支（从未发送、冷却已过或验证码已被消费），不打 ERROR 和堆栈
+            logger.debugf("尾号 %s 没有冷却中的 %s 验证码记录", PhoneNumberMask.tail(phoneNumber), tokenCodeType.name());
             return ResponseBuilder.error(ErrorCode.TOKEN_NOT_FOUND, e.getMessage());
         }
     }

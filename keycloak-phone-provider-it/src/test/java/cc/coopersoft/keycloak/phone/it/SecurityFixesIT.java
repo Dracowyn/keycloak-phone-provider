@@ -46,7 +46,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>注册表单 validate 阶段只校验不消费，其他字段出错时验证码仍可用，注册成功后号码被标记为已验证；</li>
  *   <li>首次配置短信 MFA：无号码用户可绑定新号码，已有已验证号码的用户不能借此换号；</li>
  *   <li>号码绑定 / 解绑接口只认 Bearer，跨站带身份 Cookie 的请求被拒；签发客户端不在白名单内的令牌被拒；</li>
- *   <li>并发错误猜测绕不过输错上限，并发发送绕不过重发冷却。</li>
+ *   <li>并发错误猜测绕不过输错上限，并发发送绕不过重发冷却；</li>
+ *   <li>请求号码先校验再规范化：逗号列表、重复区号前缀等被拒，区号变体共用同一个冷却；
+ *   验证码被成功消费后可以立即重发。</li>
  * </ul>
  */
 class SecurityFixesIT {
@@ -65,6 +67,10 @@ class SecurityFixesIT {
     /** 并发用例的请求数：与审查实测时的并发度一致。 */
     private static final int CONCURRENT_GUESSES = 40;
     private static final int CONCURRENT_SENDS = 20;
+    /** 单条验证码允许的最多比对次数，与 TokenCodeServiceImpl.MAX_VERIFICATION_ATTEMPTS 一致。 */
+    private static final int MAX_VERIFICATION_ATTEMPTS = 5;
+    /** 发送成功后占位保留的秒数，与 PhoneMessageServiceImpl 一致；测试按它加余量等待。 */
+    private static final int SEND_RESERVATION_AFTER_SUCCESS_SECONDS = 5;
 
     private static KeycloakContainer keycloak;
 
@@ -399,14 +405,24 @@ class SecurityFixesIT {
     // ---------- 并发 ----------
 
     @Test
-    @DisplayName("并发提交错误验证码绕不过 5 次上限：之后正确验证码也被拒")
+    @DisplayName("并发提交错误验证码绕不过 5 次上限：实际比对不超过 5 次，之后正确验证码也被拒")
     void concurrentWrongCodesCannotBypassAttemptLimit() throws Exception {
         for (String phone : List.of("13900000031", "13900000032")) {
             String code = sendCodeAndAwait("authentication-code", phone);
             String wrong = code.equals("000000") ? "111111" : "000000";
+            int logMark = keycloak.getLogs().length();
 
             List<Integer> statuses = concurrently(CONCURRENT_GUESSES, () -> phoneGrant(phone, wrong).statusCode());
             assertThat(statuses).as("错误验证码不应签发令牌").doesNotContain(200);
+
+            // 每次比对失败服务端记一行。不加锁时并发请求读到同一个 attempts 各自比对，行数远超上限，
+            // 最终 attempts 却仍可能 ≥ 5，只看「之后正确码被拒」区分不了修复前后
+            Thread.sleep(1000);
+            String failedComparison = "number ending " + phone.substring(phone.length() - 4) + " mismatched";
+            long comparisons = keycloak.getLogs().substring(logMark).lines()
+                    .filter(line -> line.contains(failedComparison)).count();
+            assertThat(comparisons).as("并发 %d 个错误猜测实际比对次数", CONCURRENT_GUESSES)
+                    .isLessThanOrEqualTo(MAX_VERIFICATION_ATTEMPTS);
 
             HttpResponse<String> correct = phoneGrant(phone, code);
             assertThat(correct.statusCode()).as("并发输错 %d 次后正确验证码也应作废: %s", CONCURRENT_GUESSES,
@@ -424,6 +440,54 @@ class SecurityFixesIT {
             assertThat(statuses.stream().filter(status -> status == 200).count())
                     .as("冷却期内只能发出一条: %s", statuses).isEqualTo(1);
         }
+    }
+
+    // ---------- 号码输入与发送占位 ----------
+
+    @Test
+    @DisplayName("请求号码先校验再规范化：逗号列表、重复区号前缀、换行被拒且不发短信，区号变体共用冷却")
+    void invalidPhoneNumbersRejectedAndVariantsShareCooldown() throws Exception {
+        String phone = "13900000050";
+        int logMark = keycloak.getLogs().length();
+        for (String invalid : List.of("13900000070,13900000071", "008613900000050", "+8613900000050",
+                "1390000\n0050")) {
+            HttpResponse<String> resp = sendCode("verification-code", "86", invalid);
+            assertThat(resp.statusCode()).as("%s: %s", invalid, resp.body()).isEqualTo(400);
+            assertThat(JSON.readTree(resp.body()).path("code").asText()).isEqualTo("PHONE_NUMBER_INVALID");
+        }
+        HttpResponse<String> resendQuery = http().send(HttpRequest.newBuilder(uri("/realms/" + REALM
+                        + "/sms/verification-code/resend-expires?areaCode=86&phoneNumber=1390000%0AERROR"))
+                .GET().build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(resendQuery.statusCode()).as("重发查询同样校验: %s", resendQuery.body()).isEqualTo(400);
+
+        assertThat(sendCode("verification-code", "86", phone).statusCode()).isEqualTo(200);
+        assertThat(awaitCodeFromLog(logMark)).as("合法号码应发出").isNotNull();
+        for (String areaVariant : List.of("0086", "+86", " 086 ")) {
+            HttpResponse<String> variant = sendCode("verification-code", areaVariant, phone);
+            assertThat(variant.statusCode()).as("区号 %s 应与 86 共用冷却: %s", areaVariant, variant.body())
+                    .isEqualTo(429);
+        }
+        assertThat(CODE_IN_LOG.matcher(keycloak.getLogs().substring(logMark)).results().count())
+                .as("被拒的请求都不应调用短信服务商").isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("验证码被成功消费后不再被发送占位挡住，冷却期内即可重发")
+    void resendAllowedRightAfterCodeConsumed() throws Exception {
+        String phone = "13900000051";
+        String code = sendCodeAndAwait("authentication-code", phone);
+        HttpResponse<String> grant = phoneGrant(phone, code);
+        assertThat(grant.statusCode()).as("Everybody 直授应消费验证码: %s", grant.body()).isEqualTo(200);
+
+        // 冷却是 60 秒；占位只撑过发送那次提交，消费后最多等这么久加余量就能重发
+        long deadline = System.nanoTime()
+                + TimeUnit.SECONDS.toNanos(SEND_RESERVATION_AFTER_SUCCESS_SECONDS + 5L);
+        HttpResponse<String> resend = sendAuthenticationCode(phone);
+        while (resend.statusCode() != 200 && System.nanoTime() < deadline) {
+            Thread.sleep(500);
+            resend = sendAuthenticationCode(phone);
+        }
+        assertThat(resend.statusCode()).as("消费后应能重发: %s", resend.body()).isEqualTo(200);
     }
 
     private static JsonNode findUser(String username) throws Exception {
@@ -604,9 +668,13 @@ class SecurityFixesIT {
     }
 
     private static HttpResponse<String> sendCode(String endpoint, String phone) throws Exception {
+        return sendCode(endpoint, "86", phone);
+    }
+
+    private static HttpResponse<String> sendCode(String endpoint, String areaCode, String phone) throws Exception {
         return http().send(HttpRequest.newBuilder(uri("/realms/" + REALM + "/sms/" + endpoint))
                         .header("Content-Type", "application/x-www-form-urlencoded")
-                        .POST(HttpRequest.BodyPublishers.ofString(form(Map.of("areaCode", "86", "phoneNumber", phone))))
+                        .POST(HttpRequest.BodyPublishers.ofString(form(Map.of("areaCode", areaCode, "phoneNumber", phone))))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
     }

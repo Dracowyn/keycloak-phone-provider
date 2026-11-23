@@ -32,7 +32,8 @@ public class AuthenticationCodeAuthenticator extends BaseDirectGrantAuthenticato
 
     @Override
     public void authenticate(AuthenticationFlowContext context) {
-        if (!validateVerificationCode(context, getPhoneNumber(context))) {
+        PhoneNumber phoneNumber = getPhoneNumber(context);
+        if (phoneNumber.isEmpty() || !validateVerificationCode(context, phoneNumber)) {
             invalidCredentials(context,context.getUser());
             return;
         }

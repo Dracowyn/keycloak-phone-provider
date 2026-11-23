@@ -182,7 +182,7 @@ spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 | `spi-captcha-service-tencent-captcha-app-id` | 未配置 | 验证码应用 ID，必填且应可解析为整数 |
 | `spi-captcha-service-tencent-app-secret-key` | 未配置 | 验证码应用密钥，必填 |
 | `spi-captcha-service-tencent-endpoint` | `captcha.tencentcloudapi.com` | 腾讯验证码 API endpoint |
-| `spi-captcha-service-tencent-allow-disaster-ticket` | `true` | 是否接受 `trerror_`、`terror_` 前缀容灾票据；设为 `true` 会接受可自行构造的前缀字符串 |
+| `spi-captcha-service-tencent-allow-disaster-ticket` | `false` | 是否接受 `trerror_`、`terror_` 前缀容灾票据；设为 `true` 会接受任何人都能自行构造的前缀字符串，启动时打 WARN |
 | `spi-captcha-service-tencent-fallback-on-error` | `false` | 捕获腾讯 SDK 异常时是否放行；与容灾票据开关独立 |
 | `spi-captcha-service-tencent-captcha-type` | 未配置；协议固定为 `9` | 旧配置只在值非 `9` 时告警，不改变请求。`CaptchaType=9` 不是滑块或点选类型枚举 |
 
@@ -195,9 +195,9 @@ spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 | `spi-captcha-service-geetest-id` | 未配置 | 极验应用 ID |
 | `spi-captcha-service-geetest-key` | 未配置 | 极验密钥 |
 | `spi-captcha-service-geetest-version` | `3` | 取 `3` 或 `4`，前端 SDK 与验证字段必须一致；源码仅在值为 `4` 时走 v4 |
-| `spi-captcha-service-geetest-fallback_on_error` | `false` | **命名例外，保留下划线**；仅 v4：显式设为 `true` 时，连接失败、超时与极验 HTTP 5xx 放行；HTTP 4xx 与处理异常任何配置下都拒绝。v4 请求连接超时 3 秒、读取超时 5 秒 |
+| `spi-captcha-service-geetest-fallback_on_error` | `false` | **命名例外，保留下划线**；极验不可用时是否放行，v3、v4 共用。v3：设为 `true` 时 register 失败的 challenge 进入宕机模式（只查三字段非空），默认不进入，人机验证不通过。v4：显式设为 `true` 时，连接失败、超时与极验 HTTP 5xx 放行；HTTP 4xx 与处理异常任何配置下都拒绝。v4 请求连接超时 3 秒、读取超时 5 秒 |
 
-**ID 或密钥任一未配置（或空白）时人机验证一律不通过**，发送接口返回 `CAPTCHA_REQUIRED`，启动时打 ERROR；受信机密客户端除外。v3 的 `digestmod` 在源码中固定为 `md5`，不是可配置键。v3 初始化失败按 challenge 使用宕机模式，v4 的异常回退另受上表开关控制；字段和响应结构见 [API.md](./API.md#人机验证配置)。
+**ID 或密钥任一未配置（或空白）时人机验证一律不通过**，发送接口返回 `CAPTCHA_REQUIRED`，启动时打 ERROR；受信机密客户端除外。v3 的 `digestmod` 在源码中固定为 `md5`，不是可配置键。v3 初始化失败时的宕机模式与 v4 的异常回退都受上表 `fallback_on_error` 控制，默认都不放行；字段和响应结构见 [API.md](./API.md#人机验证配置)。
 
 ### reCAPTCHA
 
@@ -324,7 +324,7 @@ spi-phone-provider-config-location-black-list=\u865a\u62df
 | ID | 显示名 | 作用 |
 | --- | --- | --- |
 | `CONFIGURE_SMS_OTP` | `Configure OTP over SMS` | 校验 `VERIFY` 验证码并创建短信 OTP 凭据；首次绑定与已有验证号码保护见 MFA 小节 |
-| `UPDATE_PHONE_NUMBER` | `Update Phone Number` | 显示资料更新页面；当前操作自身不验证新号码，并要求提交号码与现值一致。真正绑定/改号通过 `/sms/update-profile` 完成 |
+| `UPDATE_PHONE_NUMBER` | `Update Phone Number` | 显示资料更新页面；当前操作自身不验证新号码，并要求提交号码与现值一致。真正绑定/改号通过 `/sms/update-profile` 完成。**该接口自本版起只认白名单客户端签发的 Bearer 令牌**，登录主题页拿不到这种令牌，不能再在这个必需操作的页面里用 Cookie 调它改号；改号请引导用户到账户中心 |
 | `VERIFY_PHONE_OR_EMAIL` | `Verify Phone or Email` | 邮箱与手机号均未验证时要求验证；只有非空号码且 `phoneNumberVerified=true` 才算手机已验证，否则进入继承的邮箱验证流程 |
 
 **失败表现：** 必需操作未启用或主题不匹配时，认证可能无法完成。已有 `phoneNumber` 但 `phoneNumberVerified=false` 不满足手机已验证条件；直授客户端无法完成需要页面交互的必需操作。
@@ -396,12 +396,14 @@ curl -X POST '<base-url>/realms/<realm>/protocol/openid-connect/token' \
 | 真实发送商 | 显式配置 `sender-service=aliyun`，已部署对应 jar，模板、签名、权限与真实发送验证通过；不依赖默认 dummy，不假定配置错误会回退 |
 | 不部署 dummy | `providers/` 中没有 `keycloak-sms-provider-dummy.jar`，避免验证码进入 info 日志 |
 | 人机验证选型 | 安装并确认实际选中实现；腾讯四个必填键、极验 ID/密钥、reCAPTCHA secret 全部配齐，缺项会一律拒绝；多个模块并存须用 `spi-captcha-service--provider` 指定其一并重新 `kc.sh build`；未部署任何实现时跳过人机验证 |
-| 故障放行策略 | 显式决定腾讯 `allow-disaster-ticket` 与 `fallback-on-error`、极验 v4 `fallback_on_error`（默认 `false`）；腾讯容灾票据默认放行可被自行构造，安全敏感场景应评估设为 `false` |
+| 故障放行策略 | 腾讯 `allow-disaster-ticket`、`fallback-on-error` 与极验 `fallback_on_error`（v3、v4 共用）默认都不放行；开启任一项都意味着故障或伪造票据时跳过人机验证，只在已有短信侧频控时开启 |
 | 客户端密钥 | 已启用的机密客户端凭正确 `client_id` + `client_secret` 可豁免人机验证失败结果，secret 只能放可信后端；**已有登录 Cookie 并不自动豁免人机验证** |
 | 反向代理与真实 IP | 人机验证把 Keycloak 连接的 `remoteAddr` 发给厂商；按 [Keycloak 26.8.1 代理指南](https://github.com/keycloak/keycloak/blob/26.8.1/docs/guides/server/reverseproxy.adoc)配置可信代理，并由代理覆盖转发头，避免伪造或全变为代理 IP |
 | 区号文件 | `areacode.json` 已放到配置路径、进程可读、内容有效；`GET /sms` 返回许可列表 |
 | 主题与资料 | `phone` 已单独部署，补齐 `smsOtpPhoneNumberMismatch` 文案，必填字段与各流程一致 |
-| User Profile | 如声明 `phoneNumber` / `phoneNumberVerified`，两者都只给管理员编辑权限，未托管属性策略不设为启用，不加格式校验器；见 [User Profile 属性声明](#user-profile-属性声明) |
+| User Profile | 如声明 `phoneNumber` / `phoneNumberVerified`，两者都只给管理员编辑权限，未托管属性策略不设为启用，不加格式校验器；见 [User Profile 属性声明](#user-profile-属性声明)。用户一旦能编辑这两个属性，Keycloak 自带的 Account REST（任意客户端、令牌带 `manage-account` 即可调用）就能绕开插件的客户端白名单直接改号并保持已验证 |
+| 写接口白名单客户端 | `allowed-write-clients` 里的客户端不要开启密码直授（Direct access grants）：默认直授流程不含插件的短信 MFA，只凭密码就能拿到可换绑、解绑号码的令牌。启用了旧版 token-exchange 时，不要授予交换到白名单客户端的权限，否则交换出的令牌 `azp` 就是白名单客户端 |
+| 换绑解绑与短信 MFA | 当前换绑、解绑不要求二次验证：持白名单客户端有效令牌即可把号码换走或解绑，从而移走或删除短信第二因子（解绑另要求邮箱已验证）。令牌泄露的影响按此评估；近期认证或旧号码验证计划在后续版本加入 |
 | 数据库迁移 | 验证码表为 `PHONE_MESSAGE_TOKEN_CODE`；`ATTEMPTS` 由 Liquibase `token-code-attempts` 自动迁移，有列存在前置检查，无需手工加列；按数据库变更流程备份与观察启动日志 |
 | 短信防滥用 | 不把现有小时记录阈值当作严格“每号码每类型每小时最多 3 次”；实际 `>3` 边界与成功消费清记录的影响见 [API.md](./API.md#频控与验证码生命周期) |
 

@@ -53,6 +53,7 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
 
     // 极验3.0宕机模式按 challenge 登记：只有本服务在 register 失败时本地生成并登记过的 challenge，
     // 才允许走 failValidate（仅校验非空）。不能用进程级共享状态，否则一个用户初始化失败会让所有用户的校验被放行。
+    // 宕机模式只在显式配置 fallback_on_error=true 时启用，默认 register 失败即无法通过人机验证。
     private static final String OFFLINE_CHALLENGE_KEY_PREFIX = "geetest-v3-offline:";
     private static final long OFFLINE_CHALLENGE_LIFESPAN_SECONDS = 10 * 60;
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -61,6 +62,11 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
      * 必填配置键：缺任一都无法校验，此时人机验证一律不通过。
      */
     private static final List<String> REQUIRED_CONFIG_KEYS = List.of("id", "key");
+
+    /**
+     * 极验服务不可用时是否放行的配置键，v3 宕机模式与 v4 服务故障共用，默认不放行。
+     */
+    private static final String CONFIG_FALLBACK_ON_ERROR = "fallback_on_error";
 
     private final KeycloakSession session;
     @Setter
@@ -158,6 +164,11 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
 
         // 根据该 challenge 初始化时的服务状态选择验证方式；宕机登记一次性消费，不可重复使用
         if (session.singleUseObjects().remove(offlineChallengeKey(challenge)) != null) {
+            if (!isFallbackOnErrorEnabled()) {
+                // 登记于开关关闭之前的宕机 challenge：关闭后同样不放行
+                log.warn("极验v3宕机模式的 challenge，未开启 fallback_on_error，人机验证不通过");
+                return false;
+            }
             result = gtLib.failValidate(challenge, validate, seccode);
         } else {
             Map<String, String> paramMap = createParamMap(user);
@@ -255,13 +266,20 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
      * 默认不放行：攻击者能让校验请求出错（例如构造被拒的参数）时，默认放行等于没有人机验证。
      */
     private boolean allowOnServiceFailure(String reason, Exception cause) {
-        boolean fallback = Boolean.TRUE.equals(config.getBoolean("fallback_on_error"));
+        boolean fallback = isFallbackOnErrorEnabled();
         if (fallback) {
             log.warnf(cause, "%s；已按 fallback_on_error=true 放行", reason);
         } else {
             log.warnf(cause, "%s；人机验证不通过（未开启 fallback_on_error）", reason);
         }
         return fallback;
+    }
+
+    /**
+     * 是否显式配置了 {@code fallback_on_error=true}。
+     */
+    private boolean isFallbackOnErrorEnabled() {
+        return Boolean.TRUE.equals(config.getBoolean(CONFIG_FALLBACK_ON_ERROR));
     }
 
     /**
@@ -345,10 +363,27 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
         }
 
         // 如果是3.0版本，返回验证结果
-        GeetestLibResult result = getGeetestLibResult(user, geetestId, geetestKey);
+        return registerResultForFrontend(getGeetestLibResult(user, geetestId, geetestKey));
+    }
+
+    /**
+     * 处理 v3 register 结果并返回给前端的数据，响应结构不变。
+     * <p>
+     * register 失败（出错、超时、返回 0）时，只有开启 {@code fallback_on_error} 才把下发的 challenge 登记为宕机模式，
+     * 之后按宕机模式校验；未开启时不登记，该 challenge 走正常二次校验，极验不可用时自然不通过。
+     *
+     * @param result register 结果
+     * @return 给前端的 JSON
+     */
+    String registerResultForFrontend(GeetestLibResult result) {
         if (result.getStatus() != 1) {
+            if (!isFallbackOnErrorEnabled()) {
+                log.warn("极验v3初始化失败，未开启 fallback_on_error，不启用宕机模式，本次人机验证无法通过");
+                return result.getData();
+            }
             String challenge = extractChallenge(result.getData());
             if (challenge != null) {
+                log.warn("极验v3初始化失败，已按 fallback_on_error=true 登记宕机模式 challenge");
                 session.singleUseObjects().put(offlineChallengeKey(challenge), OFFLINE_CHALLENGE_LIFESPAN_SECONDS, Map.of("offline", "1"));
             }
         }

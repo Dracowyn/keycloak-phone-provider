@@ -10,8 +10,10 @@ import cc.coopersoft.keycloak.phone.providers.spi.PhoneMessageService;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneLocation;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberMask;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
+import org.keycloak.models.AbstractKeycloakTransaction;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserModel;
@@ -20,7 +22,6 @@ import org.keycloak.events.EventType;
 
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ForbiddenException;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -40,7 +41,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
     private static final Logger logger = Logger.getLogger(PhoneMessageServiceImpl.class);
 
     /**
-     * 发送占位键前缀，完整键为 {@code 前缀 + realmId:区号号码:类型}。
+     * 发送占位键前缀，完整键为 {@code 前缀 + realmId:区号:号码:类型}。
      */
     private static final String SEND_RESERVATION_KEY_PREFIX = "phone-sms-send:";
 
@@ -50,9 +51,10 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
     private static final long SEND_RESERVATION_SECONDS = 60;
 
     /**
-     * 发送成功后占位至少保留的秒数（服务商给出的重发间隔为 0 或已过去时）。
+     * 发送成功后把占位缩短到的秒数，只用来撑过本次事务提交。提交之后冷却由数据库里的发送记录判断：
+     * 验证码被成功消费、记录删除后即可重发，不能被占位继续挡住。
      */
-    private static final long MIN_RESERVATION_SECONDS = 1;
+    private static final long SEND_RESERVATION_AFTER_SUCCESS_SECONDS = 5;
 
     /**
      * Keycloak会话对象
@@ -146,8 +148,8 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         }
 
         if (service.isEmpty()) {
-            logger.error(String.format("SMS sender service '%s' is not deployed; refusing to send %s code to %s",
-                    configuredService, type.getLabel(), phoneNumber.getFullPhoneNumber()));
+            logger.errorf("SMS sender service '%s' is not deployed; refusing to send %s code to number ending %s",
+                    configuredService, type.getLabel(), PhoneNumberMask.tail(phoneNumber));
             return MessageSendResult.failure(MessageSendResult.ERROR_CODE_SENDER_SERVICE_UNAVAILABLE,
                     "SMS sender service is not available");
         }
@@ -157,28 +159,69 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         SingleUseObjectProvider singleUseObjects = session.singleUseObjects();
         String reservationKey = sendReservationKey(phoneNumber, type);
         if (!singleUseObjects.putIfAbsent(reservationKey, SEND_RESERVATION_SECONDS)) {
-            logger.debugf("%s code to %s is already being sent, treating as resend cooldown",
-                    type.getLabel(), phoneNumber.getFullPhoneNumber());
+            logger.debugf("%s code to number ending %s is already being sent, treating as resend cooldown",
+                    type.getLabel(), PhoneNumberMask.tail(phoneNumber));
             return resendCooldownResult(phoneNumber, type);
         }
+        SendReservation reservation = new SendReservation(singleUseObjects, reservationKey);
+        session.getTransactionManager().enlistAfterCompletion(reservation);
 
         MessageSendResult result;
         try {
             result = sendReserved(phoneNumber, type);
-        } catch (RuntimeException e) {
-            singleUseObjects.remove(reservationKey);
+        } catch (Throwable e) {
+            reservation.release();
             throw e;
         }
         if (result.ok()) {
-            // 重发间隔由短信服务商在结果里给出，发送前不知道，这里改按它重设占位时长。
-            // put 随事务提交才写入，占位因此一定撑到本次记录落库之后，下一次发送的冷却和小时上限检查都能看到它
-            singleUseObjects.put(reservationKey,
-                    reservationSecondsAfterSuccess(result.getResendExpires(), LocalDateTime.now()), Map.of());
+            // 时序：putIfAbsent、remove 立即写入缓存；put 进 Infinispan 事务，在数据库提交之后才写入，
+            // 事务回滚时丢弃。这里把 60 秒的占位缩短到几秒，覆盖到本次发送记录提交、对其他请求可见为止，
+            // 之后冷却和小时上限都按数据库记录判断
+            singleUseObjects.put(reservationKey, SEND_RESERVATION_AFTER_SUCCESS_SECONDS, Map.of());
         } else {
             // 没有发出短信：释放占位，否则一次失败会锁住整个占位期
-            singleUseObjects.remove(reservationKey);
+            reservation.release();
         }
         return result;
+    }
+
+    /**
+     * 发送占位的释放。登记为事务完成后回调：Keycloak 26.8.2 的 {@code DefaultKeycloakTransactionManager}
+     * 在数据库提交成功后对其调用 {@code commit()}；数据库提交失败、请求出错或被标记为只回滚时调用 {@code rollback()}。
+     * <p>
+     * 回滚时成功路径上的 {@code put} 被丢弃，只剩 60 秒的占位，要在这里删掉，否则发送成功、落库失败后该号码被白锁一分钟。
+     * 已经在请求中途释放过的不再删，避免删掉其他请求随后放下的占位。
+     */
+    private static final class SendReservation extends AbstractKeycloakTransaction {
+
+        private final SingleUseObjectProvider singleUseObjects;
+        private final String key;
+        private boolean released;
+
+        private SendReservation(SingleUseObjectProvider singleUseObjects, String key) {
+            this.singleUseObjects = singleUseObjects;
+            this.key = key;
+        }
+
+        /**
+         * 立即释放占位（没有发出短信时）。
+         */
+        void release() {
+            if (!released) {
+                released = true;
+                singleUseObjects.remove(key);
+            }
+        }
+
+        @Override
+        protected void commitImpl() {
+            // 提交成功：占位由成功路径上的 put 缩短，到期自然消失
+        }
+
+        @Override
+        protected void rollbackImpl() {
+            release();
+        }
     }
 
     /**
@@ -201,17 +244,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
 
     private String sendReservationKey(PhoneNumber phoneNumber, TokenCodeType type) {
         return SEND_RESERVATION_KEY_PREFIX + session.getContext().getRealm().getId() + ":"
-                + phoneNumber.getAreaCode() + phoneNumber.getPhoneNumber() + ":" + type.name();
-    }
-
-    /**
-     * 发送成功后占位保留的秒数：到服务商给出的重发截止时间为止，至少 {@link #MIN_RESERVATION_SECONDS} 秒。
-     */
-    private static long reservationSecondsAfterSuccess(LocalDateTime resendExpires, LocalDateTime now) {
-        if (resendExpires == null) {
-            return MIN_RESERVATION_SECONDS;
-        }
-        return Math.max(MIN_RESERVATION_SECONDS, Duration.between(now, resendExpires).getSeconds());
+                + phoneNumber.getAreaCode() + ":" + phoneNumber.getPhoneNumber() + ":" + type.name();
     }
 
     /**
@@ -244,7 +277,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         PhoneLocation phoneLocation = new PhoneLocation();
         // 判断是否启用归属地检测，并进行验证
         if (phoneLocation.verification(locationEnable, locationAppcode, phoneNumber, locationBlackList, session)) {
-            logger.warn("Illegal phone number:" + phoneNumber.getFullPhoneNumber());
+            logger.warnf("Illegal phone number ending %s", PhoneNumberMask.tail(phoneNumber));
             result = MessageSendResult.failure(MessageSendResult.ERROR_CODE_ILLEGAL_PHONE_NUMBER,
                     "Illegal phone number");
 
@@ -265,8 +298,8 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
 
         if (result.ok()) {
             getTokenCodeService().persistCode(token, type, result);
-            logger.info(String.format("Send %s SMS verification code to %s over %s", type.getLabel(), phoneNumber.getFullPhoneNumber(),
-                    service));
+            logger.infof("Send %s SMS verification code to number ending %s over %s", type.getLabel(),
+                    PhoneNumberMask.tail(phoneNumber), service);
 
             // 记录短信发送成功事件（不记录验证码明文，避免敏感信息落入事件日志）
             eventBuilder.detail("send_result", "success")
@@ -274,8 +307,8 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
                     .detail("resend_expires_time", String.valueOf(result.getResendExpiresTime()))
                     .success();
         } else {
-            logger.error(String.format("Message sending to %s failed with %s: %s",
-                    phoneNumber.getFullPhoneNumber(), result.getErrorCode(), result.getErrorMessage()));
+            logger.errorf("Message sending to number ending %s failed with %s: %s",
+                    PhoneNumberMask.tail(phoneNumber), result.getErrorCode(), result.getErrorMessage());
 
             // 记录短信发送失败事件
             eventBuilder.detail("send_result", "failure")

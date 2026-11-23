@@ -4,6 +4,7 @@ import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.authentication.AuthenticationFlowContext;
@@ -35,8 +36,11 @@ public class ResetCredentialWithPhone extends ResetCredentialChooseUser {
 
     public static final String PHONE_RESET_CREDENTIAL_TPL = "login-reset-password-with-phone.ftl";
 
+    /**
+     * 请求里的号码，已校验并规范化；缺失或格式不合格时返回空号码。
+     */
     protected PhoneNumber getPhoneNumber(AuthenticationFlowContext context){
-        return new PhoneNumber(context.getHttpRequest().getDecodedFormParameters());
+        return PhoneNumberInput.fromFormOrEmpty(context.getHttpRequest().getDecodedFormParameters());
     }
 
     @Override
@@ -54,9 +58,9 @@ public class ResetCredentialWithPhone extends ResetCredentialChooseUser {
         EventBuilder event = context.getEvent();
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
         String username = formData.getFirst("username");
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
+        PhoneNumber rawPhoneNumber = new PhoneNumber(formData);
 
-        if ((username == null || username.isEmpty()) && phoneNumber.isEmpty()) {
+        if ((username == null || username.isEmpty()) && rawPhoneNumber.isEmpty()) {
             event.error(Errors.USERNAME_MISSING);
             Response challenge = context.form()
                     .setError(Messages.MISSING_USERNAME)
@@ -74,8 +78,11 @@ public class ResetCredentialWithPhone extends ResetCredentialChooseUser {
         }
 
         if (user == null) {
-            user = UserUtils.findUserByPhone(context.getSession().users(), context.getRealm(), phoneNumber);
-            if ((user == null) || !validateVerificationCode(context,user)) {
+            // 号码格式不合格与找不到用户同样回 INVALID_USER，不区分原因
+            PhoneNumber phoneNumber = getPhoneNumber(context);
+            user = phoneNumber.isEmpty() ? null
+                    : UserUtils.findUserByPhone(context.getSession().users(), context.getRealm(), phoneNumber);
+            if ((user == null) || !validateVerificationCode(context, user, phoneNumber)) {
                 Response challenge = context.form()
                         .setError(Messages.INVALID_USER)
 //                        .setAttribute("captchaKey", siteKey)
@@ -104,8 +111,7 @@ public class ResetCredentialWithPhone extends ResetCredentialChooseUser {
         context.success();
     }
 
-    private boolean validateVerificationCode(AuthenticationFlowContext context, UserModel user) {
-        PhoneNumber phoneNumber = getPhoneNumber(context);
+    private boolean validateVerificationCode(AuthenticationFlowContext context, UserModel user, PhoneNumber phoneNumber) {
         String code = context.getHttpRequest().getDecodedFormParameters()
                 .getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
         return context.getSession().getProvider(TokenCodeService.class)

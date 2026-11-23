@@ -8,10 +8,13 @@
 
 | 类别 | 变更 |
 |---|---|
-| 安全（**破坏性**） | `/sms/update-profile` 与 `/sms/update-profile/unset` 只认 Bearer 访问令牌，不再接受 Keycloak Identity Cookie：该 Cookie 是 `SameSite=None`，以前任意站点可用跨站表单以登录用户身份换绑号码（并标记已验证）或解绑号码。只带 Cookie 返回 `401 AUTHENTICATION_REQUIRED`，且先于请求体解析检查。**调用方须改为携带用户访问令牌后再升级**。 |
+| 安全（**破坏性**） | `/sms/update-profile` 与 `/sms/update-profile/unset` 只认 Bearer 访问令牌，不再接受 Keycloak Identity Cookie：该 Cookie 是 `SameSite=None`，以前任意站点可用跨站表单以登录用户身份换绑号码（并标记已验证）或解绑号码。只带 Cookie 返回 `401 AUTHENTICATION_REQUIRED`，且先于请求体解析检查。**调用方须改为携带用户访问令牌后再升级**。登录主题里靠 Cookie 调该接口的改号页（如 `UPDATE_PHONE_NUMBER` 必需操作页）随之无法改号，需改到账户中心完成；接口没有 CORS，只支持同源调用。 |
 | 安全（**破坏性**） | 绑定、解绑接口还要求令牌的签发客户端（`azp`）在新配置 `spi-phone-provider-config-allowed-write-clients` 白名单内，默认只有 `account-console`，否则返回新错误码 `403 CLIENT_NOT_ALLOWED`（先于请求体解析）。只认 Bearer 时，同 realm 任意客户端为用户签的令牌都能换绑号码。没有改用 audience 或角色校验，因为默认配置下新建客户端的令牌同样带 `aud=account` 和 `manage-account`。用其他 clientId 调用的部署须先把该客户端加进白名单。写成 `,` 表示全部拒绝并在启动时打 ERROR。 |
 | 安全 | 校验验证码前对该条记录加悲观写锁：以前并发提交错误验证码可绕过「输错 5 次作废」，现在任何并发交错下同一条验证码最多比对 5 次。不改表结构。 |
-| 安全 | 发送短信前按 realm、号码、用途在 Keycloak 一次性对象存储中原子占位：以前同号码并发发送可绕过重发冷却与小时上限。并发请求只有一个真正发出，其余返回 `RESEND_TOO_SOON`（占位方记录未提交时不带 `details.resendExpires`）；发送失败立即释放占位，节点在发送途中宕机时该号码最多被锁 60 秒。 |
+| 安全（行为变更） | 请求里的号码统一校验并规范化：区号允许前导 `+`，去掉前导 0 后为 1～3 位；号码为 5～15 位纯数字，区号加号码不超过 15 位，区号 86 时须为 `1` 开头的 11 位。以前逗号分隔的多号码会原样交给短信服务商群发，超长号码在短信发出后才因落库失败返回 500、不留频控记录，`086`、`+86`、带空白等写法各算一个号码绕过冷却和小时上限，号码里的换行还能伪造日志行。现在 REST 接口不合格返回 `400 PHONE_NUMBER_INVALID`（先于人机验证检查），表单与认证器复用 Keycloak 自带的 `error-invalid-value` 文案；原来能通过的 4 位区号被拒。已存号码的读取路径不变，但历史上以非规范写法存入的号码（如区号带前导 0）不再能被新请求匹配到。日志里的号码只打尾号 4 位；重发查询没有冷却记录时不再打 ERROR 和堆栈。 |
+| 安全（**破坏性**） | 腾讯 `allow-disaster-ticket` 默认由 `true` 改为 `false`：`trerror_` / `terror_` 前缀票据任何人都能构造，以前默认放行等于没有人机验证。腾讯前端 SDK 加载失败时用户将发不了短信；需要容灾的部署显式开启，启动时会打 WARN。前端配置接口配置不完整时的消息改为「腾讯云验证码配置不完整」。 |
+| 安全（**破坏性**） | 极验 v3（默认版本）的宕机模式改由 `fallback_on_error` 控制，默认关闭：以前 register 失败时无条件登记宕机 challenge，之后三个字段非空即放行。现在默认不登记，极验不可用时人机验证不通过；`fallback_on_error` 同时管 v3 和 v4，配置键不变。 |
+| 安全 | 发送短信前按 realm、号码、用途在 Keycloak 一次性对象存储中原子占位：以前同号码并发发送可绕过重发冷却与小时上限。并发请求只有一个真正发出，其余返回 `RESEND_TOO_SOON`（占位方记录未提交时不带 `details.resendExpires`）；发送失败或事务回滚时立即释放占位，节点在发送途中宕机时该号码最多被锁 60 秒；发送成功后占位缩短到 5 秒，之后按数据库记录判断冷却，验证码被成功消费后可立即重发。 |
 | 安全 | 短信 MFA 的发码与校验改用短信 OTP 凭据里登记的号码，不再读 `phoneNumber` 用户属性，属性被改动后第二因子不会跟着走。旧凭据没有号码数据时回退到属性并打 WARN。 |
 | 安全 | 插件在每个 realm 首次使用时检查 User Profile：`phoneNumber` / `phoneNumberVerified` 对用户可编辑，或未托管属性策略为启用而 `phoneNumberVerified` 未声明时打一次 ERROR。推荐声明见 README「User Profile 属性声明」。 |
 | 安全 | 同一号码有多个已验证账户时，按号码查找用户返回「用户不存在」并打 ERROR（只记账户 ID 与号码后 4 位），不再随机取一个；注册与 Everybody 自动开户把这种号码视为已占用，Everybody 返回 `USER_CONFLICT`，不建新账户。 |

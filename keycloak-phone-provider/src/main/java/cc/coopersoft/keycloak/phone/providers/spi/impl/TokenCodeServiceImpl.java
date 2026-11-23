@@ -11,6 +11,7 @@ import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresent
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberMask;
 import cc.coopersoft.keycloak.phone.utils.UserProfileRiskCheck;
 import org.jboss.logging.Logger;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
@@ -304,6 +305,10 @@ public class TokenCodeServiceImpl implements TokenCodeService {
      */
     private void registerFailedAttempt(TokenCodeEntity tokenCode) {
         int attempts = (tokenCode.getAttempts() == null ? 0 : tokenCode.getAttempts()) + 1;
+        // 每次比对失败记一行，便于发现爆破；也是并发 IT 统计实际比对次数的依据
+        logger.infof("%s code for number ending %s mismatched, failed attempt %d of %d", tokenCode.getType(),
+                PhoneNumberMask.tail(new PhoneNumber(tokenCode.getAreaCode(), tokenCode.getPhoneNumber())),
+                attempts, MAX_VERIFICATION_ATTEMPTS);
         tokenCode.setAttempts(attempts);
         if (attempts >= MAX_VERIFICATION_ATTEMPTS) {
             expireActiveCodes(tokenCode);
@@ -352,8 +357,8 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                         phoneNumber.getFullPhoneNumber())
                 .filter(u -> !u.getId().equals(user.getId()))
                 .forEach(u -> {
-                    logger.info(String.format("User %s also has phone number %s. Un-verifying.", u.getId(),
-                            phoneNumber.getFullPhoneNumber()));
+                    logger.infof("User %s also has phone number ending %s. Un-verifying.", u.getId(),
+                            PhoneNumberMask.tail(phoneNumber));
                     u.setSingleAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED, "false");
                 });
 
@@ -411,7 +416,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
     @Override
     public void setUserPhoneNumberByCode(UserModel user, PhoneNumber phoneNumber, String code) {
         TokenCodeType tokenCodeType = TokenCodeType.VERIFY;
-        logger.info(String.format("valid %s , phone: %s", tokenCodeType, phoneNumber.getFullPhoneNumber()));
+        logger.infof("valid %s , phone ending: %s", tokenCodeType, PhoneNumberMask.tail(phoneNumber));
 
         TokenCodeEntity tokenCode = lockCurrentProcessEntity(phoneNumber, tokenCodeType);
         if (tokenCode == null) {
@@ -465,14 +470,14 @@ public class TokenCodeServiceImpl implements TokenCodeService {
     @Override
     public LocalDateTime getResendExpires(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
         if (this.canResend(phoneNumber, tokenCodeType)) {
-            throw new BadRequestException(String.format("Resend timeout in %s process for %s is finished.",
-                    tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
+            throw new BadRequestException(String.format("Resend timeout in %s process for number ending %s is finished.",
+                    tokenCodeType.getLabel(), PhoneNumberMask.tail(phoneNumber)));
         }
 
         TokenCodeEntity tokenCode = latestProcessEntity(phoneNumber, tokenCodeType);
         if (tokenCode == null) {
-            throw new BadRequestException(String.format("There is no valid %s in process for %s",
-                    tokenCodeType.getLabel(), phoneNumber.getFullPhoneNumber()));
+            throw new BadRequestException(String.format("There is no valid %s in process for number ending %s",
+                    tokenCodeType.getLabel(), PhoneNumberMask.tail(phoneNumber)));
         }
         return tokenCode.getResendExpiresAt();
     }

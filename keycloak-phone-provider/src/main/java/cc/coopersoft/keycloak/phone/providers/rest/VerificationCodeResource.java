@@ -7,6 +7,7 @@ import cc.coopersoft.keycloak.phone.providers.spi.ConfigService;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.ws.rs.*;
@@ -19,6 +20,7 @@ import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager.AuthResult;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.util.Set;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_FORM_URLENCODED;
@@ -151,13 +153,16 @@ public class VerificationCodeResource {
             return ResponseBuilder.error(caller.rejection());
         }
 
-        PhoneNumber phoneNumber = new PhoneNumber(areaCode, phoneNumberStr);
-        
-        // 验证手机号
-        if (phoneNumber.isEmpty()) {
+        // 验证手机号：缺失返回 PHONE_NUMBER_REQUIRED，格式不合格返回 PHONE_NUMBER_INVALID，之后只用规范化结果
+        if (new PhoneNumber(areaCode, phoneNumberStr).isEmpty()) {
             return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_REQUIRED);
         }
-        
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(areaCode, phoneNumberStr);
+        if (normalized.isEmpty()) {
+            return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_INVALID);
+        }
+        PhoneNumber phoneNumber = normalized.get();
+
         // 验证验证码
         if (code == null || code.trim().isEmpty()) {
             return ResponseBuilder.error(ErrorCode.VERIFICATION_CODE_REQUIRED);

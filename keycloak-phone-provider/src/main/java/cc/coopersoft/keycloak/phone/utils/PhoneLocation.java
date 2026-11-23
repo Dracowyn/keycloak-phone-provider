@@ -47,7 +47,8 @@ public class PhoneLocation {
             Map<String, Object> responseMap = JsonUtils.decode(response.body());
 
             String isp = extractIsp(responseMap);
-            logger.info("Phone number: " + userPhoneNumber + " ISP: " + isp + " IP address: " + ip + " location data: " + responseMap);
+            // 不打归属地接口的原始响应：其中可能带有完整号码
+            logger.info("Phone number ending: " + PhoneNumberMask.tail(phoneNumber) + " ISP: " + isp + " IP address: " + ip);
 
             return isBlacklisted(isp, blackList);
         } catch (Exception e) {

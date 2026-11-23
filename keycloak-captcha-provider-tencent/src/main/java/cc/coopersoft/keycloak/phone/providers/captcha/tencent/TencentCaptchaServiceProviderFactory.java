@@ -33,6 +33,10 @@ public class TencentCaptchaServiceProviderFactory implements CaptchaServiceProvi
         if (!missingKeys.isEmpty()) {
             log.errorf("腾讯云验证码配置不完整，缺少配置键 %s；补齐前人机验证一律不通过", missingKeys);
         }
+        if (Boolean.TRUE.equals(config.getBoolean(TencentCaptchaServiceImpl.CONFIG_ALLOW_DISASTER_TICKET, false))) {
+            log.warn("已开启 allowDisasterTicket：前端容灾票据不经腾讯云校验直接放行，任何人伪造 trerror_ / terror_ "
+                    + "前缀的票据都能通过人机验证；只在确实需要容灾、且短信侧已有频控时开启");
+        }
     }
 
     @Override

@@ -26,11 +26,11 @@ import java.util.Optional;
  * 会在本地生成形如 {@code trerror_{errorCode}_{appId}_{timestamp}} 的容灾票据
  * （前缀 {@code trerror_}；腾讯官方示例中也存在 {@code terror_} 前缀），
  * 这类票据不是腾讯云签发的真实票据，无法也不应提交给 DescribeCaptchaResult 接口校验。
- * 配置项 {@code allowDisasterTicket}（默认 true）控制识别到容灾票据后的处理策略：
+ * 配置项 {@code allowDisasterTicket}（默认 false）控制识别到容灾票据后的处理策略：
  * <ul>
- *     <li>true（默认）：与腾讯官方容灾实践一致，直接放行，避免因验证码前端资源不可用而导致用户完全无法登录；
- *     但这也意味着攻击者可以自行构造符合前缀规则的“容灾票据”绕过人机验证，需结合短信侧的每号码频控等风控措施评估风险。</li>
- *     <li>false：严格模式，容灾票据一律拒绝；安全敏感的部署建议显式配置为 false。</li>
+ *     <li>false（默认）：容灾票据一律拒绝。容灾票据由前端本地生成，任何人都能按前缀规则构造，放行等于没有人机验证。</li>
+ *     <li>true：与腾讯官方容灾实践一致，直接放行，验证码前端资源不可用时用户仍能登录；
+ *     代价是攻击者可以自行构造票据绕过人机验证，开启前须结合短信侧的每号码频控等风控措施评估风险。</li>
  * </ul>
  */
 public class TencentCaptchaServiceImpl implements CaptchaService {
@@ -54,6 +54,11 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
      */
     private static final List<String> REQUIRED_CONFIG_KEYS =
             List.of("secretId", "secretKey", "captchaAppId", "appSecretKey");
+
+    /**
+     * 是否放行前端容灾票据的配置键，默认不放行。
+     */
+    static final String CONFIG_ALLOW_DISASTER_TICKET = "allowDisasterTicket";
 
     /**
      * 容灾票据写进日志时保留的最大字符数：票据由请求方任意提交，只留前缀够排查即可。
@@ -132,8 +137,8 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
         // 识别前端容灾票据（见类注释）：此类票据并非腾讯云签发，不能提交给 DescribeCaptchaResult 接口校验，
         // 否则必然验证失败，容灾机制形同虚设。识别到后按 allowDisasterTicket 配置决定放行或拒绝。
         if (ticket.startsWith(DISASTER_TICKET_PREFIX_TR) || ticket.startsWith(DISASTER_TICKET_PREFIX_T)) {
-            Boolean allowDisasterTicket = config.getBoolean("allowDisasterTicket", true);
-            if (allowDisasterTicket) {
+            Boolean allowDisasterTicket = config.getBoolean(CONFIG_ALLOW_DISASTER_TICKET, false);
+            if (Boolean.TRUE.equals(allowDisasterTicket)) {
                 log.warnf("检测到腾讯云验证码前端容灾票据，已按 allowDisasterTicket=true 放行: user=%s, ip=%s, ticket=%s",
                         user, userIp, ticketForLog(ticket));
                 return true;
@@ -222,7 +227,8 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
         List<String> missingKeys = missingConfigKeys(config);
         if (!missingKeys.isEmpty()) {
             log.errorf("腾讯云验证码配置不完整，缺少配置键 %s，无法提供前端配置", missingKeys);
-            return "{\"success\":0,\"message\":\"腾讯云验证码应用ID未配置\"}";
+            // 只说配置不完整，不列键名：缺的可能是 secretKey 等，写成「应用ID未配置」会误导排查
+            return "{\"success\":0,\"message\":\"腾讯云验证码配置不完整\"}";
         }
 
         // 获取腾讯云配置

@@ -259,7 +259,7 @@ form 示例的占位值必须做 URL 编码；使用 `curl --data-urlencode` 可
 | 400 | `INVALID_REQUEST` | JSON 解析抛出 `IOException`，例如 JSON 语法错误 |
 | 400 | `PHONE_NUMBER_REQUIRED` | 区号或号码为空 |
 | 400 | `CAPTCHA_REQUIRED` | 当前人机验证实现返回不通过，且未通过可信客户端密钥检查；缺参数与校验失败均使用此码，不返回 `CAPTCHA_INVALID` |
-| 400 | `PHONE_NUMBER_INVALID` | 区号不是 1–4 位纯数字；当前不是通用号码格式校验 |
+| 400 | `PHONE_NUMBER_INVALID` | 区号或号码格式不合格，规则见下方「号码格式」；先于人机验证检查，写错号码不消耗验证票据 |
 | 403 | `AREA_NOT_SUPPORTED` | 区号不在许可列表内，或区号列表未成功加载 |
 | 404 | `USER_NOT_FOUND` | 仅适用于上表要求已存在用户的三个端点 |
 | 429 | `SMS_SEND_LIMIT_EXCEEDED` | 最近一小时的号码、类型记录超过源码阈值；当前边界见[频控](#频控与验证码生命周期) |
@@ -267,7 +267,9 @@ form 示例的占位值必须做 URL 编码；使用 `curl --data-urlencode` 可
 | 403 | `ILLEGAL_PHONE_NUMBER` | 启用归属地检测且命中黑名单 |
 | 500 | `SMS_SEND_FAILED` | 指定短信发送商未部署、发送商返回失败，或发送异常被转为失败结果；`message` 可能来自发送商 |
 
-资源按“号码非空 → 人机验证/可信客户端 → 区号格式 → 区号许可 → 用户存在性 → 发送服务”顺序执行；发送服务先检查小时记录数，再检查冷却。因此同一请求有多项问题时，只会看到先命中的分支。
+**号码格式**：区号去掉首尾空白，允许一个前导 `+`，其余必须是数字，去掉前导 0 后为 1～3 位且不为 0；号码去掉首尾空白后必须是纯数字，5～15 位；区号加号码不超过 15 位；区号为 86 时号码必须是 `1` 开头的 11 位。`086`、`0086`、`+86` 规范化为 `86`，与 `86` 共用冷却和小时阈值；号码里带区号（如 `+8613800000000`）、逗号分隔多个号码、含空格或换行的一律拒绝，不做猜测性修正。规范化后的值用于频控、落库和调用短信服务商。
+
+资源按“号码非空 → 号码格式 → 人机验证/可信客户端 → 区号许可 → 用户存在性 → 发送服务”顺序执行；发送服务先检查小时记录数，再检查冷却。因此同一请求有多项问题时，只会看到先命中的分支。
 
 ## 查询重发时间
 
@@ -285,7 +287,7 @@ form 示例的占位值必须做 URL 编码；使用 `curl --data-urlencode` 可
 | `/sms/reset-code/resend-expires` | `RESET` |
 | `/sms/verification-code/resend-expires` | `VERIFY` |
 
-无需认证或人机验证。三种请求形式均要求 `areaCode`、`phoneNumber` 非空，**不接受 legacy 字段名**，也不在此接口执行发送时的区号格式、区号许可或用户存在性检查。
+无需认证或人机验证。三种请求形式均要求 `areaCode`、`phoneNumber` 非空，**不接受 legacy 字段名**；号码按发送接口的同一规则校验并规范化，不合格返回 `400 PHONE_NUMBER_INVALID`。不执行区号许可或用户存在性检查。
 
 GET 查询示例：
 
@@ -330,7 +332,7 @@ curl -X POST '<base-url>/realms/<realm>/sms/verification-code/resend-expires' \
 
 ### POST /sms/update-profile
 
-必须在 `Authorization` 头携带该用户的有效访问令牌（`Bearer`），令牌须由 `spi-phone-provider-config-allowed-write-clients` 白名单内的客户端签发（按令牌 `azp` 精确匹配，默认只有 Keycloak 自带账户中心 `account-console`）。自建前端用其他 clientId 时要加进白名单。插件不检查 audience 和角色：默认配置下 realm 里新建的客户端签的令牌同样带 `aud=account` 和 `manage-account`，区分不了客户端。只带 Identity Cookie 的请求一律返回 401。验证码应先从 `/sms/verification-code` 获取；`registration-code`、`authentication-code` 等类型不能替代。
+必须在 `Authorization` 头携带该用户的有效访问令牌（`Bearer`），令牌须由 `spi-phone-provider-config-allowed-write-clients` 白名单内的客户端签发（按令牌 `azp` 精确匹配，默认只有 Keycloak 自带账户中心 `account-console`）。自建前端用其他 clientId 时要加进白名单。两个接口没有 CORS 处理，浏览器跨源带 `Authorization` 头调用会卡在预检，只支持与 Keycloak 同源或经反向代理同源调用。插件不检查 audience 和角色：默认配置下 realm 里新建的客户端签的令牌同样带 `aud=account` 和 `manage-account`，区分不了客户端。只带 Identity Cookie 的请求一律返回 401。验证码应先从 `/sms/verification-code` 获取；`registration-code`、`authentication-code` 等类型不能替代。
 
 | 参数 | 是否必填 | 说明 |
 | --- | --- | --- |
@@ -379,6 +381,7 @@ HTTP/1.1 204 No Content
 | 403 | `CLIENT_NOT_ALLOWED` | 令牌有效，但签发客户端不在白名单内；同样先于请求体解析，请求体非法时也返回此码 |
 | 400 | `INVALID_REQUEST` | 已认证，但 JSON 解析失败 |
 | 400 | `PHONE_NUMBER_REQUIRED` | 已认证，但区号或号码为空 |
+| 400 | `PHONE_NUMBER_INVALID` | 区号或号码格式不合格，规则同[发送响应与错误](#发送响应与错误)里的「号码格式」 |
 | 400 | `VERIFICATION_CODE_REQUIRED` | `smsCode` 缺失或全空白 |
 | 400 | `VERIFICATION_CODE_INVALID` | 有有效 `VERIFY` 记录，但验证码不匹配；本次失败计数递增 |
 | 400 | `VERIFICATION_CODE_EXPIRED` | 没有有效 `VERIFY` 流程：未发起、过期、已被消费或此前已因累计错误作废 |
@@ -485,7 +488,7 @@ POST <base-url>/realms/<realm>/geetest/code
 | `type` | 固定 `geetest` |
 | `geetestId`、`captchaAppId` | 均来自同一个 `gt` |
 
-前端 v3 初始化应使用完整响应，并按 `success !== 1` 设置 `offline: true`，不能丢掉 `challenge` 等字段只留下应用 ID。宕机 challenge 的有效期和消费边界见[安全行为变更](#安全行为变更)。
+只有配置了 `fallback_on_error=true` 才会登记宕机 challenge；默认不登记，`success=0` 时该 challenge 走正常二次校验，极验不可用时人机验证不通过。前端 v3 初始化应使用完整响应，并按 `success !== 1` 设置 `offline: true`，不能丢掉 `challenge` 等字段只留下应用 ID。宕机 challenge 的有效期和消费边界见[安全行为变更](#安全行为变更)。
 
 #### 极验 v4
 
@@ -519,7 +522,7 @@ POST <base-url>/realms/<realm>/tencent/code
 {"type":"tencent","captchaAppId":"<腾讯云应用ID>"}
 ```
 
-没有应用 ID 时，当前映射会省略 `captchaAppId`，返回 `{"type":"tencent"}`；不会转发内部的 `success=0` 和消息。前端需检查应用 ID 是否存在，不能只检查状态码。发送短信时提交 `ticket` 和 `randstr`；不使用 `captchaAppId` 充当票据。容灾票据规则见[专节](#腾讯云验证码容灾票据)。
+四个必填键（`secretId`、`secretKey`、`captchaAppId`、`appSecretKey`）缺任一项（未配置或空白）时，当前映射会省略 `captchaAppId`，返回 `{"type":"tencent"}`；不会转发内部的 `success=0` 和消息。前端需检查应用 ID 是否存在，不能只检查状态码。发送短信时提交 `ticket` 和 `randstr`；不使用 `captchaAppId` 充当票据。容灾票据规则见[专节](#腾讯云验证码容灾票据)。
 
 ### GET /recaptcha/code
 
@@ -590,7 +593,7 @@ Everybody 流程在验证码通过后，若找不到已验证号码用户，则�
 | 错误码 | HTTP | 默认消息 | 当前使用位置或边界 |
 | --- | --- | --- | --- |
 | `PHONE_NUMBER_REQUIRED` | 400 | 手机号码不能为空 | 发送、重发时间查询、绑定；区号缺失同样触发 |
-| `PHONE_NUMBER_INVALID` | 400 | 手机号码格式不正确 | 发送时区号不满足 1–4 位纯数字 |
+| `PHONE_NUMBER_INVALID` | 400 | 手机号码格式不正确 | 发送、重发查询、绑定时区号或号码格式不合格 |
 | `VERIFICATION_CODE_REQUIRED` | 400 | 验证码不能为空 | 绑定时 `smsCode` 缺失或空白 |
 | `VERIFICATION_CODE_INVALID` | 400 | 验证码不正确 | 绑定时存在有效流程但验证码不匹配 |
 | `VERIFICATION_CODE_EXPIRED` | 400 | 验证码已过期 | 绑定时没有有效 `VERIFY` 流程，包括未发起、过期、消费或作废 |
@@ -622,7 +625,7 @@ Everybody 流程在验证码通过后，若找不到已验证号码用户，则�
 | 校验失败作废 | 当前选中的验证码记录 | 累计不匹配达 5 次，记录置为过期；不删除该号码全部发送记录 |
 | 成功消费 | 当前 realm、该号码、该类型 | 成功校验路径删除该号码该类型的全部记录，不能继续重放该验证码 |
 
-**不能将现有实现当作“每号码每类型每小时最多 3 次”的硬保证。** `TokenCodeServiceImpl.isAbusing` 在发送前判断的是 `entities.size() > 3`，所以在串行发送、每次冷却已过且期间没有成功消费记录的前提下，已有 3 条记录时第 4 次仍可发送，已有 4 条时第 5 次才被拒绝。成功校验还会清空该号码该类型记录，继而影响冷却与小时计数。并发请求下同样不保证严格配额。
+**不能将现有实现当作“每号码每类型每小时最多 3 次”的硬保证。** `TokenCodeServiceImpl.isAbusing` 在发送前判断的是 `entities.size() >= MAX_SENDS_PER_HOUR`（常量为 4），所以在串行发送、每次冷却已过且期间没有成功消费记录的前提下，已有 3 条记录时第 4 次仍可发送，已有 4 条时第 5 次才被拒绝。成功校验还会清空该号码该类型记录，继而影响冷却与小时计数。同一 realm、号码、用途的并发发送由一次性对象占位串行化，并发请求不能再绕过冷却和小时阈值；但上面两点不变，所以仍不是硬配额。
 
 冷却未结束时可返回：
 
@@ -658,7 +661,7 @@ Content-Type: application/json
 | Cookie 属性与时效 | `HttpOnly; SameSite=Lax`，HTTPS 时附 `Secure`；有效期由认证执行器 `cookie.max.age` 控制，缺失、非法或非正数取 3600 秒。伪造、他人 Cookie 或绑定凭据已删除时不能豁免短信验证；签名是否仍可验证以当前 Keycloak 密钥状态为准，不承诺任意密钥轮换都会立即使全部旧令牌失效 |
 | 发送商不再回退 | 配置的发送商未部署时拒绝，发送资源返回 `SMS_SEND_FAILED`；匹配 ID 不区分大小写。默认发送商仍是 dummy，生产环境需显式配置并部署真实实现，避免验证码写入 dummy 日志 |
 | 号码验证状态 | `VERIFY_PHONE_OR_EMAIL` 要求号码非空且 `phoneNumberVerified=true` 才认定已验证；绑定号码会取消同号码其他账户的验证状态，不是删除其他账户的号码属性 |
-| 极验 v3 宕机隔离 | 只有本服务初始化失败后登记的 challenge 才走本地宕机校验，登记存在 Keycloak 一次性对象存储中，有效期 10 分钟，校验时消费；宕机验证本身只检查三字段非空，不是第三方真实校验，不再使用进程共享的宕机状态 |
+| 极验 v3 宕机隔离 | 自未发布版本起宕机模式受 `fallback_on_error` 控制，默认关闭：register 失败不登记宕机 challenge，人机验证不通过；关闭前已登记的也拒绝。开启时：只有本服务初始化失败后登记的 challenge 才走本地宕机校验，登记存在 Keycloak 一次性对象存储中，有效期 10 分钟，校验时消费；宕机验证本身只检查三字段非空，不是第三方真实校验，不再使用进程共享的宕机状态 |
 | 腾讯验证协议 | 后端 `DescribeCaptchaResult` 固定使用协议值 `CaptchaType=9`；旧配置不再改变该参数，非 9 仅告警；不能用它来选择滑块、点选等前端样式 |
 | 绑定、解绑只认 Bearer | `/sms/update-profile` 与 `/unset` 不再接受 Identity Cookie，防跨站请求伪造；前端须改为携带用户访问令牌，且令牌须由白名单客户端签发（默认 `account-console`，其他客户端返回 `403 CLIENT_NOT_ALLOWED`），见[绑定与解绑手机号](#绑定与解绑手机号) |
 | 并发校验 | 比对验证码前对该条记录加悲观写锁，并发提交错误验证码也最多比对 5 次，之后正确验证码同样失效 |
@@ -694,10 +697,10 @@ trerror_<错误码>_<应用ID>_<时间戳>
 
 | `keycloak.conf` 配置 | 处理与风险 |
 | --- | --- |
-| `spi-captcha-service-tencent-allow-disaster-ticket=true`（默认） | 直接放行人机验证；攻击者也能自行构造对应前缀，因此不等同于真实校验成功 |
-| `spi-captcha-service-tencent-allow-disaster-ticket=false` | 拒绝容灾票据；未通过可信客户端检查时发送接口返回 `CAPTCHA_REQUIRED` |
+| `spi-captcha-service-tencent-allow-disaster-ticket=true` | 直接放行人机验证，启动时打 WARN；攻击者也能自行构造对应前缀，因此不等同于真实校验成功 |
+| `spi-captcha-service-tencent-allow-disaster-ticket=false`（默认，自未发布版本起） | 拒绝容灾票据；未通过可信客户端检查时发送接口返回 `CAPTCHA_REQUIRED` |
 
-安全敏感部署应根据可用性与防刷要求显式决定该开关，而不是依赖默认放行。此开关不同于腾讯 API 调用异常的 `spi-captcha-service-tencent-fallback-on-error`：后者默认 `false`，只处理捕获到的腾讯 SDK 异常。必填键缺失时人机验证一律不通过，与容灾开关无关。配齐必填键、可信后端保管客户端密钥及短信侧频控都应独立检查，完整配置表见 [README](README.md)。
+默认拒绝：腾讯前端 SDK 加载失败时用户发不了短信。确实需要容灾放行的，在已有短信侧频控的前提下显式开启。此开关不同于腾讯 API 调用异常的 `spi-captcha-service-tencent-fallback-on-error`：后者默认 `false`，只处理捕获到的腾讯 SDK 异常。必填键缺失时人机验证一律不通过，与容灾开关无关。配齐必填键、可信后端保管客户端密钥及短信侧频控都应独立检查，完整配置表见 [README](README.md)。
 
 ## 前端迁移步骤
 
@@ -774,7 +777,7 @@ await requestPluginJson('<base-url>/realms/<realm>/sms/update-profile', {
 
 | 检查范围 | 需要覆盖的分支 |
 | --- | --- |
-| 五类发码 | 正确类型、缺号码/区号、区号格式、许可地区、三类需已注册用户的端点、Everybody 新号码 |
+| 五类发码 | 正确类型、缺号码/区号、号码格式（含区号变体共用冷却）、许可地区、三类需已注册用户的端点、Everybody 新号码 |
 | 人机验证 | 实际选中实现的字段、缺参数、校验失败、配置缺失时一律拒绝、可信后端密钥路径；登录会话本身不豁免 |
 | 绑定与解绑 | 只带 Identity Cookie 被拒、白名单客户端的 Bearer 通过、其他客户端的 Bearer 返回 403、`smsCode`、204 空体、绑定错误/过期、禁止解绑、邮箱未验证、凭据删除 |
 | 生命周期 | 五次不匹配后作废、成功后不可重放、注册其他字段失败后仍可提交 |

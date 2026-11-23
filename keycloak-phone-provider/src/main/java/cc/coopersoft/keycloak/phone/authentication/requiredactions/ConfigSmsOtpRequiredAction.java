@@ -6,6 +6,7 @@ import cc.coopersoft.keycloak.phone.credential.PhoneOtpCredentialProviderFactory
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import cc.coopersoft.keycloak.phone.utils.StringUtils;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionProvider;
@@ -15,6 +16,7 @@ import org.keycloak.models.UserModel;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.core.Response;
+import java.util.Optional;
 
 public class ConfigSmsOtpRequiredAction implements RequiredActionProvider {
 
@@ -38,12 +40,18 @@ public class ConfigSmsOtpRequiredAction implements RequiredActionProvider {
     public void processAction(RequiredActionContext context) {
         TokenCodeService tokenCodeService = context.getSession().getProvider(TokenCodeService.class);
         UserModel user = context.getUser();
-        PhoneNumber phoneNumber = new PhoneNumber(context.getHttpRequest().getDecodedFormParameters());
+        PhoneNumber rawPhoneNumber = new PhoneNumber(context.getHttpRequest().getDecodedFormParameters());
         String code = context.getHttpRequest().getDecodedFormParameters().getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
-        if (phoneNumber.isEmpty() || StringUtils.isBlank(code)) {
-            challengeWithError(context, phoneNumber, ERROR_CODE_MISMATCH);
+        if (rawPhoneNumber.isEmpty() || StringUtils.isBlank(code)) {
+            challengeWithError(context, rawPhoneNumber, ERROR_CODE_MISMATCH);
             return;
         }
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(rawPhoneNumber);
+        if (normalized.isEmpty()) {
+            challengeWithError(context, rawPhoneNumber, PhoneConstants.INVALID_PHONE_NUMBER);
+            return;
+        }
+        PhoneNumber phoneNumber = normalized.get();
 
         String currentPhoneNumber = user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER);
         boolean hasVerifiedPhone = VerifyPhoneOrEmail.isPhoneNumberVerified(currentPhoneNumber,

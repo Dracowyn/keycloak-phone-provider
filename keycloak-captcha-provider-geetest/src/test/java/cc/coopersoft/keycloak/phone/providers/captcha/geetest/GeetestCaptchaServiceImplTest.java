@@ -1,11 +1,14 @@
 package cc.coopersoft.keycloak.phone.providers.captcha.geetest;
 
 import com.geetest.sdk.GeetestLib;
+import com.geetest.sdk.GeetestLibResult;
 import com.sun.net.httpserver.HttpServer;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.keycloak.Config;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.SingleUseObjectProvider;
 
 import java.lang.reflect.Proxy;
 import java.net.InetSocketAddress;
@@ -85,6 +88,68 @@ class GeetestCaptchaServiceImplTest {
         // 桩服务已关闭，同一端口连接被拒，属于网络类异常
         assertThat(v4Service(endpoint, null).verify(v4Form(), "user")).as("默认不放行").isFalse();
         assertThat(v4Service(endpoint, "true").verify(v4Form(), "user")).as("显式开启 fallback_on_error 才放行").isTrue();
+    }
+
+    @Test
+    @DisplayName("v3 register 失败：默认不启用宕机模式即拒绝，显式开启 fallback_on_error 才按宕机模式放行")
+    void verifyV3_registerFailure_offlineModeOnlyWithExplicitFallback() {
+        String challenge = "local-challenge";
+        GeetestLibResult registerFailure = new GeetestLibResult();
+        registerFailure.setStatus(0);
+        registerFailure.setData("{\"success\":0,\"gt\":\"gt-id\",\"challenge\":\"" + challenge + "\",\"new_captcha\":true}");
+        MultivaluedHashMap<String, String> form = new MultivaluedHashMap<>();
+        form.putSingle(GeetestLib.GEETEST_CHALLENGE, challenge);
+        form.putSingle(GeetestLib.GEETEST_VALIDATE, "validate");
+        form.putSingle(GeetestLib.GEETEST_SECCODE, "seccode");
+
+        Map<String, Map<String, String>> singleUse = new HashMap<>();
+        GeetestCaptchaServiceImpl byDefault = v3Service(singleUse, null);
+        assertThat(byDefault.registerResultForFrontend(registerFailure)).as("返回给前端的数据不变")
+                .isEqualTo(registerFailure.getData());
+        assertThat(singleUse).as("默认不登记宕机 challenge").isEmpty();
+
+        // 开关关闭前登记的宕机 challenge，关闭后同样不放行（不会去请求极验）
+        singleUse.put(GeetestCaptchaServiceImpl.offlineChallengeKey(challenge), Map.of("offline", "1"));
+        assertThat(byDefault.verify(form, "user")).isFalse();
+
+        GeetestCaptchaServiceImpl optedIn = v3Service(singleUse, "true");
+        optedIn.registerResultForFrontend(registerFailure);
+        assertThat(singleUse).containsKey(GeetestCaptchaServiceImpl.offlineChallengeKey(challenge));
+        assertThat(optedIn.verify(form, "user")).as("显式开启后按宕机模式放行").isTrue();
+    }
+
+    private static GeetestCaptchaServiceImpl v3Service(Map<String, Map<String, String>> singleUse,
+                                                       String fallbackOnError) {
+        Map<String, String> values = new HashMap<>(Map.of("id", "gt-id", "key", "gt-key"));
+        if (fallbackOnError != null) {
+            values.put("fallback_on_error", fallbackOnError);
+        }
+        GeetestCaptchaServiceImpl service = new GeetestCaptchaServiceImpl(session(singleUse));
+        service.setConfig(scope(values));
+        return service;
+    }
+
+    /** 只支持 {@code singleUseObjects()} 的 put / remove，存进给定 Map 的会话桩。 */
+    private static KeycloakSession session(Map<String, Map<String, String>> singleUse) {
+        SingleUseObjectProvider provider = (SingleUseObjectProvider) Proxy.newProxyInstance(
+                SingleUseObjectProvider.class.getClassLoader(), new Class<?>[]{SingleUseObjectProvider.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "put" -> {
+                        @SuppressWarnings("unchecked")
+                        Map<String, String> notes = (Map<String, String>) args[2];
+                        singleUse.put((String) args[0], notes);
+                        yield null;
+                    }
+                    case "remove" -> singleUse.remove((String) args[0]);
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+        return (KeycloakSession) Proxy.newProxyInstance(KeycloakSession.class.getClassLoader(),
+                new Class<?>[]{KeycloakSession.class}, (proxy, method, args) -> {
+                    if ("singleUseObjects".equals(method.getName())) {
+                        return provider;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
     }
 
     private static GeetestCaptchaServiceImpl v4Service(String endpoint, String fallbackOnError) {

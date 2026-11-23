@@ -7,6 +7,7 @@ package cc.coopersoft.keycloak.phone.authentication.forms;
 
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.keycloak.Config;
 import org.keycloak.authentication.FormAction;
@@ -24,6 +25,7 @@ import jakarta.ws.rs.core.MultivaluedMap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
 
@@ -105,15 +107,24 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
 
         KeycloakSession session = context.getSession();
 
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
-        context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
+        PhoneNumber rawPhoneNumber = new PhoneNumber(formData);
+        context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, rawPhoneNumber.getFullPhoneNumber());
 
-        if (phoneNumber.isEmpty()) {
+        if (rawPhoneNumber.isEmpty()) {
             context.error(Errors.INVALID_REGISTRATION);
             errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.MISSING_PHONE_NUMBER));
             context.validationError(formData, errors);
             return;
         }
+        Optional<PhoneNumber> normalized = PhoneNumberInput.normalize(rawPhoneNumber);
+        if (normalized.isEmpty()) {
+            context.error(Errors.INVALID_REGISTRATION);
+            errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.INVALID_PHONE_NUMBER));
+            context.validationError(formData, errors);
+            return;
+        }
+        PhoneNumber phoneNumber = normalized.get();
+        context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
 
         if (UserUtils.isPhoneNumberInUse(session.users(), context.getRealm(), phoneNumber)) {
             formData.remove(PhoneConstants.FIELD_PHONE_NUMBER);
@@ -143,7 +154,9 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
 
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
 
-        PhoneNumber phoneNumber = new PhoneNumber(formData);
+        // validate 阶段已校验过号码，这里取同一个规范化结果
+        PhoneNumber phoneNumber = PhoneNumberInput.fromForm(formData)
+                .orElseThrow(() -> new IllegalStateException("注册号码未通过校验却进入了 success 阶段"));
         RegistrationSmsCode.consume(context.getSession(), user, phoneNumber);
     }
 

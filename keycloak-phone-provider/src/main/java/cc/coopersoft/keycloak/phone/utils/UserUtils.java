@@ -15,11 +15,6 @@ public class UserUtils {
 
     private static final Logger logger = Logger.getLogger(UserUtils.class);
 
-    /**
-     * 日志里只保留号码末尾的位数，不打完整号码。
-     */
-    private static final int LOGGED_PHONE_TAIL_LENGTH = 4;
-
     private static boolean isPhoneNumberVerified(UserModel user) {
         return user.getAttributeStream(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED)
                 .anyMatch("true"::equals);
@@ -41,16 +36,10 @@ public class UserUtils {
         List<UserModel> verified = users.filter(UserUtils::isPhoneNumberVerified).toList();
         if (verified.size() > 1) {
             logger.errorf("尾号 %s 的号码有 %d 个已验证账户 %s，拒绝按号码选择账户；请清理重复的 phoneNumberVerified",
-                    phoneTail(phoneNumber), verified.size(), verified.stream().map(UserModel::getId).toList());
+                    PhoneNumberMask.tail(phoneNumber), verified.size(), verified.stream().map(UserModel::getId).toList());
             return null;
         }
         return verified.isEmpty() ? null : verified.get(0);
-    }
-
-    private static String phoneTail(PhoneNumber phoneNumber) {
-        String number = String.valueOf(phoneNumber.getPhoneNumber());
-        return number.length() <= LOGGED_PHONE_TAIL_LENGTH ? number
-                : number.substring(number.length() - LOGGED_PHONE_TAIL_LENGTH);
     }
 
     /**

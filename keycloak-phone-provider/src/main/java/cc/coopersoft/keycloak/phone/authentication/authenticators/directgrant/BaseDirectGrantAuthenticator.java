@@ -4,6 +4,7 @@ import cc.coopersoft.keycloak.phone.providers.constants.ErrorCode;
 import cc.coopersoft.keycloak.phone.providers.rest.dto.ApiError;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.PhoneNumberInput;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.keycloak.authentication.AuthenticationFlowContext;
@@ -66,8 +67,12 @@ public abstract class BaseDirectGrantAuthenticator implements Authenticator {
                 .build();
     }
 
+    /**
+     * 请求里的号码，已校验并规范化。缺失或格式不合格时返回空号码，调用方按原有的 {@code isEmpty()} 分支
+     * 返回 {@code invalid_grant}，与缺失时的响应一致。
+     */
     protected PhoneNumber getPhoneNumber(AuthenticationFlowContext context){
-        return new PhoneNumber(context.getHttpRequest().getDecodedFormParameters());
+        return PhoneNumberInput.fromFormOrEmpty(context.getHttpRequest().getDecodedFormParameters());
     }
 
     protected String getAuthenticationCode(AuthenticationFlowContext context){
