@@ -65,7 +65,7 @@
 | `keycloak-captcha-provider-recaptcha` / `keycloak-captcha-provider-recaptcha.jar` | reCAPTCHA 后端校验；配置接口不返回 siteKey | 按需，前端需自行集成 |
 | `keycloak-phone-provider-it` / 无部署 jar | Testcontainers 集成测试，默认不加入构建 | 不部署；通过 `it` profile 启用 |
 
-发送资源和各人机验证配置资源均获取当前默认的 `CaptchaService`，不根据请求路径或参数自动选厂商。最简单的部署是只安装一个人机验证模块；不要把三个模块一起复制后假定它们会自动匹配各自 URL。部署了多个模块时必须用 `spi-captcha-service--provider=<tencent|geetest|recaptcha>` 指定其一，否则发送资源拒绝请求（`CAPTCHA_REQUIRED`），配置资源返回 500。
+发送资源和各人机验证配置资源均获取当前默认的 `CaptchaService`，不根据请求路径或参数自动选厂商。最简单的部署是只安装一个人机验证模块；不要把三个模块一起复制后假定它们会自动匹配各自 URL。部署了多个模块时必须用 `spi-captcha-service--provider=<tencent|geetest|recaptcha>` 指定其一，否则发送资源拒绝请求（`CAPTCHA_REQUIRED`），配置资源返回 500。该选项是构建期选项，修改后须重新执行 `kc.sh build`（以 `start --optimized` 启动时不会自动重建）。
 
 ### 构建与安装
 
@@ -186,7 +186,7 @@ spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 | `spi-captcha-service-tencent-fallback-on-error` | `false` | 捕获腾讯 SDK 异常时是否放行；与容灾票据开关独立 |
 | `spi-captcha-service-tencent-captcha-type` | 未配置；协议固定为 `9` | 旧配置只在值非 `9` 时告警，不改变请求。`CaptchaType=9` 不是滑块或点选类型枚举 |
 
-**四个必填键缺任一项（值为 `null`）时，代码会跳过人机验证并直接放行**，不是拒绝服务。配齐后前端随发送请求提交 `ticket`、`randstr`；具体协议与容灾取舍见 [API.md](./API.md#腾讯云验证码容灾票据)。
+**四个必填键缺任一项（未配置或空白）时人机验证一律不通过**，发送接口返回 `CAPTCHA_REQUIRED`，启动时打 ERROR；受信机密客户端除外。配齐后前端随发送请求提交 `ticket`、`randstr`；具体协议与容灾取舍见 [API.md](./API.md#腾讯云验证码容灾票据)。
 
 ### 极验
 
@@ -197,7 +197,7 @@ spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 | `spi-captcha-service-geetest-version` | `3` | 取 `3` 或 `4`，前端 SDK 与验证字段必须一致；源码仅在值为 `4` 时走 v4 |
 | `spi-captcha-service-geetest-fallback_on_error` | `true` | **命名例外，保留下划线**；仅 v4 捕获连接/处理异常时决定是否放行 |
 
-**ID 或密钥任一未配置时会直接放行人机验证**。v3 的 `digestmod` 在源码中固定为 `md5`，不是可配置键。v3 初始化失败按 challenge 使用宕机模式，v4 的异常回退另受上表开关控制；字段和响应结构见 [API.md](./API.md#人机验证配置)。
+**ID 或密钥任一未配置（或空白）时人机验证一律不通过**，发送接口返回 `CAPTCHA_REQUIRED`，启动时打 ERROR；受信机密客户端除外。v3 的 `digestmod` 在源码中固定为 `md5`，不是可配置键。v3 初始化失败按 challenge 使用宕机模式，v4 的异常回退另受上表开关控制；字段和响应结构见 [API.md](./API.md#人机验证配置)。
 
 ### reCAPTCHA
 
@@ -205,7 +205,7 @@ spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 | --- | --- | --- |
 | `spi-captcha-service-recaptcha-secret` | 未配置 | 后端向 `https://www.recaptcha.net/recaptcha/api/siteverify` 校验时使用的 secret；前端随发码请求提交 `g-recaptcha-response` |
 
-没有可供前端配置接口读取的 siteKey 键，`getFrontendKey` 恒返回空字符串；`GET /recaptcha/code` 只返回 `type`。不要把“有后端校验模块”理解为主题已经完成适配。
+缺少 `secret`（未配置或空白）时人机验证一律不通过，不会向 siteverify 发请求，启动时打 ERROR；受信机密客户端除外。没有可供前端配置接口读取的 siteKey 键，`getFrontendKey` 恒返回空字符串；`GET /recaptcha/code` 只返回 `type`。不要把“有后端校验模块”理解为主题已经完成适配。
 
 ### 归属地黑名单
 
@@ -365,7 +365,7 @@ curl -X POST '<base-url>/realms/<realm>/protocol/openid-connect/token' \
 | --- | --- |
 | 真实发送商 | 显式配置 `sender-service=aliyun`，已部署对应 jar，模板、签名、权限与真实发送验证通过；不依赖默认 dummy，不假定配置错误会回退 |
 | 不部署 dummy | `providers/` 中没有 `keycloak-sms-provider-dummy.jar`，避免验证码进入 info 日志 |
-| 人机验证选型 | 安装并确认实际选中实现；腾讯四个必填键、极验 ID/密钥全部配齐，缺项会直接放行；未部署任何实现也会跳过 |
+| 人机验证选型 | 安装并确认实际选中实现；腾讯四个必填键、极验 ID/密钥、reCAPTCHA secret 全部配齐，缺项会一律拒绝；多个模块并存须用 `spi-captcha-service--provider` 指定其一并重新 `kc.sh build`；未部署任何实现时跳过人机验证 |
 | 故障放行策略 | 显式决定腾讯 `allow-disaster-ticket` 与 `fallback-on-error`、极验 v4 `fallback_on_error`；腾讯容灾票据默认放行可被自行构造，安全敏感场景应评估设为 `false` |
 | 客户端密钥 | 已启用的机密客户端凭正确 `client_id` + `client_secret` 可豁免人机验证失败结果，secret 只能放可信后端；**已有登录 Cookie 并不自动豁免人机验证** |
 | 反向代理与真实 IP | 人机验证把 Keycloak 连接的 `remoteAddr` 发给厂商；按 [Keycloak 26.8.1 代理指南](https://github.com/keycloak/keycloak/blob/26.8.1/docs/guides/server/reverseproxy.adoc)配置可信代理，并由代理覆盖转发头，避免伪造或全变为代理 IP |
