@@ -45,7 +45,7 @@
 
 | 项目 | 要求 |
 | --- | --- |
-| Keycloak | 26.x；当前编译与集成测试基线为 26.8.1，其他小版本应在目标环境验证 |
+| Keycloak | 26.x；当前编译与集成测试基线为 26.8.2，其他小版本应在目标环境验证 |
 | Java 编译目标 | Java 17（`release=17`） |
 | Java 运行环境 | 推荐 Java 21；插件的编译目标不替代所选 Keycloak 发行版自身的 JVM 要求 |
 
@@ -401,7 +401,7 @@ Release 附件取 `target/providers/` 的六个 provider jar，并标清可选�
 
 ## 版本与升级
 
-当前版本：**2.2.1**；Keycloak 基线：**26.8.1**。版本历史见 [CHANGELOG.md](./CHANGELOG.md)，接口和安全迁移见 [API.md](./API.md#前端迁移步骤)。
+当前版本：**2.2.1**；Keycloak 基线：**26.8.2**。版本历史见 [CHANGELOG.md](./CHANGELOG.md)，接口和安全迁移见 [API.md](./API.md#前端迁移步骤)。
 
 ### 已知限制
 

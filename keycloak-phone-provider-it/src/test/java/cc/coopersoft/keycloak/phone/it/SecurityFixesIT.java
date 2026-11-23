@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class SecurityFixesIT {
 
-    private static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.1";
+    private static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.2";
     private static final String REALM = "sec";
     private static final String CLIENT_ID = "it-app";
     private static final String REDIRECT_URI = "http://localhost/cb";

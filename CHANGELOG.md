@@ -2,12 +2,13 @@
 
 部署与认证流程配置见 [README.md](./README.md)，接口契约、安全行为与前端迁移步骤见 [API.md](./API.md)。本文只记录版本变化，不替代部署或接口参考。
 
-当前版本为 **2.2.1**，Keycloak 基线为 **26.8.1**。早期版本不补写未经确认的发布日期。
+当前版本为 **2.2.1**，Keycloak 基线为 **26.8.2**。早期版本不补写未经确认的发布日期。
 
 ## 未发布
 
 | 类别 | 变更 |
 |---|---|
+| 依赖 | Keycloak 基线升至 26.8.2（安全补丁，无扩展 API 移除；自带 BouncyCastle 仍为 1.86）。 |
 | 打包 | 腾讯云验证码 fat jar 不再捆绑 Keycloak 已提供的 Gson、commons-lang3、commons-io 和 commons-logging；阿里云短信 fat jar 不再捆绑 Gson、error_prone_annotations、httpclient、httpcore、commons-codec、commons-logging、commons-lang3 和 slf4j-api，运行时统一使用 Keycloak 提供的库。阿里云模块只使用默认 JSON 的 `CommonRequest` + `getCommonResponse`，不再捆绑 JAXB 运行时 `jaxb-runtime` 及其 txw2、istack、stax-ex 等传递依赖，避免与 Keycloak 自带版本发生同包冲突；仍保留 `javax.xml.bind`、`javax.activation` API。升级 `version.keycloak` 时需核对这些库。 |
 | 包名 | 扩展模块分别改用独立包 `cc.coopersoft.keycloak.phone.providers.captcha.tencent`、`cc.coopersoft.keycloak.phone.providers.captcha.geetest`、`cc.coopersoft.keycloak.phone.providers.captcha.recaptcha`、`cc.coopersoft.keycloak.phone.providers.sender.aliyun`、`cc.coopersoft.keycloak.phone.providers.sender.dummy`，不再与核心模块或其他扩展共用包；provider ID 与配置不变，自定义代码若直接引用旧类全名需修改 import。 |
 

@@ -19,7 +19,7 @@
       <scope>provided</scope>
     </dependency>
     <!--
-      BouncyCastle 一律不打进 fat jar，运行时统一使用 Keycloak 自带的 BC（26.8.1 为 1.86）。
+      BouncyCastle 一律不打进 fat jar，运行时统一使用 Keycloak 自带的 BC（26.8.2 为 1.86）。
       若将版本不一致的 BC 类捆绑进 provider jar，与 Keycloak lib 中的 BC 经类加载器混用后
       会在 production 模式启动时抛 NoSuchFieldError（如 IANAObjectIdentifiers.id_alg_xmss_hashsig）。
       此处 provided 仅满足编译期与依赖声明，版本与 Keycloak 自带版本保持一致。

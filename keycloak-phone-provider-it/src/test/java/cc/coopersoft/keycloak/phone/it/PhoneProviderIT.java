@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 class PhoneProviderIT {
 
-    private static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.1";
+    private static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.2";
     private static final Pattern CODE_IN_LOG = Pattern.compile(">>>\\s*([0-9]{4,8})");
 
     private static KeycloakContainer keycloak;
