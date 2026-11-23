@@ -13,13 +13,16 @@ import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.SingleUseObjectProvider;
 import org.keycloak.models.UserModel;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.events.EventType;
 
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ForbiddenException;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * 短信验证码服务实现类
@@ -35,6 +38,21 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
      * 日志记录器
      */
     private static final Logger logger = Logger.getLogger(PhoneMessageServiceImpl.class);
+
+    /**
+     * 发送占位键前缀，完整键为 {@code 前缀 + realmId:区号号码:类型}。
+     */
+    private static final String SEND_RESERVATION_KEY_PREFIX = "phone-sms-send:";
+
+    /**
+     * 发送在途时的占位秒数。只需盖住一次发送调用的耗时；节点在发送中途宕机时，该号码最多被锁这么久。
+     */
+    private static final long SEND_RESERVATION_SECONDS = 60;
+
+    /**
+     * 发送成功后占位至少保留的秒数（服务商给出的重发间隔为 0 或已过去时）。
+     */
+    private static final long MIN_RESERVATION_SECONDS = 1;
 
     /**
      * Keycloak会话对象
@@ -122,21 +140,9 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
             throw new ForbiddenException("You requested the maximum number of messages the last hour");
         }
 
-        MessageSendResult result;
-
         // 判断是否可以重新发送短信验证码
         if (!getTokenCodeService().canResend(phoneNumber, type)) {
-            result = MessageSendResult.resendCooldown(MessageSendResult.ERROR_CODE_RATE_TIME, "Please wait for minutes.");
-            try {
-                LocalDateTime resendExpires = getTokenCodeService().getResendExpires(phoneNumber, type);
-                if (resendExpires != null) {
-                    result.setResendExpires(resendExpires);
-                }
-            } catch (BadRequestException e) {
-                // 冷却恰好在两次查询之间结束，按无冷却时间返回即可
-                logger.debug("Resend cooldown ended concurrently", e);
-            }
-            return result;
+            return resendCooldownResult(phoneNumber, type);
         }
 
         if (service.isEmpty()) {
@@ -145,6 +151,74 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
             return MessageSendResult.failure(MessageSendResult.ERROR_CODE_SENDER_SERVICE_UNAVAILABLE,
                     "SMS sender service is not available");
         }
+
+        // 上面两项检查都是「先查库再写库」：并发请求会在任何一条记录提交前同时通过，冷却和小时上限都会被绕过。
+        // 发送前按 realm + 号码 + 类型原子占位，占位失败与冷却中同样返回
+        SingleUseObjectProvider singleUseObjects = session.singleUseObjects();
+        String reservationKey = sendReservationKey(phoneNumber, type);
+        if (!singleUseObjects.putIfAbsent(reservationKey, SEND_RESERVATION_SECONDS)) {
+            logger.debugf("%s code to %s is already being sent, treating as resend cooldown",
+                    type.getLabel(), phoneNumber.getFullPhoneNumber());
+            return resendCooldownResult(phoneNumber, type);
+        }
+
+        MessageSendResult result;
+        try {
+            result = sendReserved(phoneNumber, type);
+        } catch (RuntimeException e) {
+            singleUseObjects.remove(reservationKey);
+            throw e;
+        }
+        if (result.ok()) {
+            // 重发间隔由短信服务商在结果里给出，发送前不知道，这里改按它重设占位时长。
+            // put 随事务提交才写入，占位因此一定撑到本次记录落库之后，下一次发送的冷却和小时上限检查都能看到它
+            singleUseObjects.put(reservationKey,
+                    reservationSecondsAfterSuccess(result.getResendExpires(), LocalDateTime.now()), Map.of());
+        } else {
+            // 没有发出短信：释放占位，否则一次失败会锁住整个占位期
+            singleUseObjects.remove(reservationKey);
+        }
+        return result;
+    }
+
+    /**
+     * 构造「冷却中」结果，能查到冷却截止时间时一并带上。
+     */
+    private MessageSendResult resendCooldownResult(PhoneNumber phoneNumber, TokenCodeType type) {
+        MessageSendResult result = MessageSendResult.resendCooldown(MessageSendResult.ERROR_CODE_RATE_TIME,
+                "Please wait for minutes.");
+        try {
+            LocalDateTime resendExpires = getTokenCodeService().getResendExpires(phoneNumber, type);
+            if (resendExpires != null) {
+                result.setResendExpires(resendExpires);
+            }
+        } catch (BadRequestException e) {
+            // 冷却恰好在两次查询之间结束，或占位方的记录尚未提交，按无冷却时间返回即可
+            logger.debug("Resend cooldown ended concurrently", e);
+        }
+        return result;
+    }
+
+    private String sendReservationKey(PhoneNumber phoneNumber, TokenCodeType type) {
+        return SEND_RESERVATION_KEY_PREFIX + session.getContext().getRealm().getId() + ":"
+                + phoneNumber.getAreaCode() + phoneNumber.getPhoneNumber() + ":" + type.name();
+    }
+
+    /**
+     * 发送成功后占位保留的秒数：到服务商给出的重发截止时间为止，至少 {@link #MIN_RESERVATION_SECONDS} 秒。
+     */
+    private static long reservationSecondsAfterSuccess(LocalDateTime resendExpires, LocalDateTime now) {
+        if (resendExpires == null) {
+            return MIN_RESERVATION_SECONDS;
+        }
+        return Math.max(MIN_RESERVATION_SECONDS, Duration.between(now, resendExpires).getSeconds());
+    }
+
+    /**
+     * 已占位后的实际发送：归属地检测、调用短信服务商、成功时落库，并记录事件。
+     */
+    private MessageSendResult sendReserved(PhoneNumber phoneNumber, TokenCodeType type) {
+        MessageSendResult result;
 
         // 注意：发送前不删除旧验证码记录——最近1小时的记录要留给 isAbusing 做频控计数
         // （此前这里的 removeCode 导致表中至多1行，一小时防滥用上限永远不会触发）。

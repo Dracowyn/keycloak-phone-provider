@@ -39,7 +39,24 @@ public class VerificationCodeResource {
 
     VerificationCodeResource(KeycloakSession session) {
         this.session = session;
-        this.auth = new AppAuthManager().authenticateIdentityCookie(session, session.getContext().getRealm());
+        this.auth = authenticateBearer(session);
+    }
+
+    /**
+     * 本资源只有写接口，一律只认 Bearer token，不认身份 Cookie，也不要回退到 Cookie：
+     * {@code KEYCLOAK_IDENTITY} 是 {@code SameSite=None}，接受它会让任意站点用跨站表单 POST
+     * 以受害者身份换绑号码或解绑号码（CSRF）。
+     *
+     * @param session Keycloak 会话
+     * @return 认证结果；没有 Bearer、格式不对或令牌无效时返回 {@code null}
+     */
+    private static AuthResult authenticateBearer(KeycloakSession session) {
+        try {
+            return new AppAuthManager.BearerTokenAuthenticator(session).authenticate();
+        } catch (NotAuthorizedException e) {
+            // Authorization 头不是 Bearer 格式（如 Basic）：按未登录处理，返回统一错误格式而不是 Keycloak 默认的 401
+            return null;
+        }
     }
 
     private TokenCodeService getTokenCodeService() {
@@ -57,6 +74,10 @@ public class VerificationCodeResource {
     @Produces(APPLICATION_JSON)
     @Consumes(APPLICATION_JSON)
     public Response setUserPhoneNumberJson(String reqBody) {
+        // 先认证再解析请求体：未登录时不论请求体如何都返回 401
+        if (auth == null) {
+            return ResponseBuilder.error(ErrorCode.AUTHENTICATION_REQUIRED);
+        }
         try {
             JsonNode jsonObject = new ObjectMapper().readTree(reqBody);
 

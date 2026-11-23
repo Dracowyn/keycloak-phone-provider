@@ -55,6 +55,11 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
     private static final List<String> REQUIRED_CONFIG_KEYS =
             List.of("secretId", "secretKey", "captchaAppId", "appSecretKey");
 
+    /**
+     * 容灾票据写进日志时保留的最大字符数：票据由请求方任意提交，只留前缀够排查即可。
+     */
+    private static final int LOGGED_TICKET_MAX_LENGTH = 16;
+
     private final KeycloakSession session;
     
     @Setter
@@ -130,11 +135,11 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
             Boolean allowDisasterTicket = config.getBoolean("allowDisasterTicket", true);
             if (allowDisasterTicket) {
                 log.warnf("检测到腾讯云验证码前端容灾票据，已按 allowDisasterTicket=true 放行: user=%s, ip=%s, ticket=%s",
-                        user, userIp, ticket);
+                        user, userIp, ticketForLog(ticket));
                 return true;
             } else {
                 log.warnf("检测到腾讯云验证码前端容灾票据，已按 allowDisasterTicket=false 拒绝: user=%s, ip=%s, ticket=%s",
-                        user, userIp, ticket);
+                        user, userIp, ticketForLog(ticket));
                 return false;
             }
         }
@@ -213,17 +218,33 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
         // 确保用户ID不为空
         user = Optional.ofNullable(user).orElse(UNKNOWN_USER);
 
-        // 获取腾讯云配置
-        String captchaAppId = config.get("captchaAppId");
-
-        if (captchaAppId == null) {
-            log.error("必须配置腾讯云验证码应用ID（captchaAppId）");
+        // 与 verify 用同一套必填检查：空白也算缺失；缺任一键都无法校验票据，给前端下发配置也没有意义
+        List<String> missingKeys = missingConfigKeys(config);
+        if (!missingKeys.isEmpty()) {
+            log.errorf("腾讯云验证码配置不完整，缺少配置键 %s，无法提供前端配置", missingKeys);
             return "{\"success\":0,\"message\":\"腾讯云验证码应用ID未配置\"}";
         }
+
+        // 获取腾讯云配置
+        String captchaAppId = config.get("captchaAppId");
 
         // 返回前端需要的配置信息
         // 前端会使用这个AppId初始化验证码组件
         return String.format("{\"success\":1,\"captchaAppId\":\"%s\"}", captchaAppId);
+    }
+
+    /**
+     * 容灾票据的日志形式：截断到前 {@link #LOGGED_TICKET_MAX_LENGTH} 个字符，换行等控制字符替换成 {@code _}，
+     * 防止请求方借票据伪造日志行。
+     */
+    private static String ticketForLog(String ticket) {
+        String head = ticket.length() > LOGGED_TICKET_MAX_LENGTH ? ticket.substring(0, LOGGED_TICKET_MAX_LENGTH) : ticket;
+        StringBuilder sanitized = new StringBuilder(head.length());
+        for (char c : head.toCharArray()) {
+            boolean lineBreakLike = Character.isISOControl(c) || c == '\u2028' || c == '\u2029';
+            sanitized.append(lineBreakLike ? '_' : c);
+        }
+        return sanitized.toString();
     }
 
     @Override

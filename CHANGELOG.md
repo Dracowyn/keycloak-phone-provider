@@ -8,6 +8,14 @@
 
 | 类别 | 变更 |
 |---|---|
+| 安全（**破坏性**） | `/sms/update-profile` 与 `/sms/update-profile/unset` 只认 Bearer 访问令牌，不再接受 Keycloak Identity Cookie：该 Cookie 是 `SameSite=None`，以前任意站点可用跨站表单以登录用户身份换绑号码（并标记已验证）或解绑号码。只带 Cookie 返回 `401 AUTHENTICATION_REQUIRED`，且先于请求体解析检查。**调用方须改为携带用户访问令牌后再升级**。 |
+| 安全 | 校验验证码前对该条记录加悲观写锁：以前并发提交错误验证码可绕过「输错 5 次作废」，现在任何并发交错下同一条验证码最多比对 5 次。不改表结构。 |
+| 安全 | 发送短信前按 realm、号码、用途在 Keycloak 一次性对象存储中原子占位：以前同号码并发发送可绕过重发冷却与小时上限。并发请求只有一个真正发出，其余返回 `RESEND_TOO_SOON`（占位方记录未提交时不带 `details.resendExpires`）；发送失败立即释放占位，节点在发送途中宕机时该号码最多被锁 60 秒。 |
+| 安全 | 短信 MFA 的发码与校验改用短信 OTP 凭据里登记的号码，不再读 `phoneNumber` 用户属性，属性被改动后第二因子不会跟着走。旧凭据没有号码数据时回退到属性并打 WARN。 |
+| 安全 | 插件在每个 realm 首次使用时检查 User Profile：`phoneNumber` / `phoneNumberVerified` 对用户可编辑，或未托管属性策略为启用而 `phoneNumberVerified` 未声明时打一次 ERROR。推荐声明见 README「User Profile 属性声明」。 |
+| 安全 | 同一号码有多个已验证账户时，按号码查找用户返回「用户不存在」并打 ERROR（只记账户 ID 与号码后 4 位），不再随机取一个；注册与 Everybody 自动开户把这种号码视为已占用，Everybody 返回 `USER_CONFLICT`，不建新账户。 |
+| 安全（行为变更） | 极验 v4 `fallback_on_error` 默认由 `true` 改为 `false`；校验请求增加连接 3 秒、读取 5 秒超时；只有网络、超时类异常与极验 HTTP 5xx 在显式开启时放行，HTTP 4xx 与处理异常任何配置下都拒绝。以前 4xx 也会按默认值放行。 |
+| 安全 | 腾讯容灾票据写日志时截断到前 16 个字符并替换换行等控制字符，防日志伪造；极验、腾讯的前端配置接口与校验使用同一套必填检查，空白也算缺失。「已部署人机验证但没有默认服务商」的 ERROR 每个进程只打一次，之后降为 DEBUG。 |
 | 人机验证 | **行为变更**：部署了就必须生效。极验缺 `id` / `key`、腾讯缺四项必填键之一、reCAPTCHA 缺 `secret`（空白也算缺失）时不再放行，发送接口返回 `CAPTCHA_REQUIRED`，启动时打 ERROR；reCAPTCHA 缺 `secret` 时不再向 siteverify 发请求。部署多个人机验证模块但未用 `spi-captcha-service--provider` 指定默认时，发送接口拒绝并打 ERROR（以前跳过人机验证）。一个都不部署时仍跳过。受信机密客户端豁免不变。 |
 | 重构 | 验证码校验、失败计数、号码绑定与注册表单两阶段校验收敛为单一实现；小时发送上限改为具名常量（仍为一小时 4 条）。外部行为不变。 |
 | 扩展 SPI | `MessageSendResult` 新增 `Status` 枚举、`resendCooldown(...)`、`isResendCooldown()` 与错误码常量 `ERROR_CODE_*`；`int` 构造器标记 `@Deprecated`，`getStatus()` 仍返回原 int 值，自定义短信服务商实现无需修改，建议改用 `success()` / `failure(...)`。 |

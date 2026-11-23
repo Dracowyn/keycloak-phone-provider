@@ -9,6 +9,9 @@ import org.jboss.logging.Logger;
 import org.keycloak.common.util.Time;
 import org.keycloak.credential.*;
 import org.keycloak.models.*;
+import org.keycloak.util.JsonSerialization;
+
+import java.io.IOException;
 
 public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCredentialModel>, CredentialInputValidator {
 
@@ -51,25 +54,69 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
 
     @Override
     public boolean isValid(RealmModel realm, UserModel user, CredentialInput input) {
-
-        PhoneNumber phoneNumber = new PhoneNumber(user
-                .getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER));
+        if (!(input instanceof UserCredentialModel) || !getType().equals(input.getType())) {
+            return false;
+        }
         String code = input.getChallengeResponse();
-
-        if (!(input instanceof UserCredentialModel)) {
-            return false;
-        }
-        if (!input.getType().equals(getType())) {
-            return false;
-        }
-        if (phoneNumber.isEmpty()) {
-            return false;
-        }
         if (code == null) {
             return false;
         }
 
-        return getTokenCodeService().validateCode(user, phoneNumber, code, TokenCodeType.OTP);
+        String credentialId = input.getCredentialId();
+        CredentialModel credential = credentialId == null
+                ? getCredentialStore(user).getStoredCredentialsByTypeStream(getType()).findFirst().orElse(null)
+                : getCredentialStore(user).getStoredCredentialById(credentialId);
+        if (credentialId != null && (credential == null || !getType().equals(credential.getType()))) {
+            return false;
+        }
+
+        PhoneNumber phoneNumber = getMfaPhoneNumber(user, credential);
+        if (phoneNumber.isEmpty()) {
+            return false;
+        }
+        // 号码取自凭据，不再要求与 phoneNumber 属性一致：属性可能已被改成别的号码
+        return getTokenCodeService().validateCode(phoneNumber, code, TokenCodeType.OTP);
+    }
+
+    /**
+     * 短信 MFA 发码和校验用的号码：取凭据里登记的号码，不读 {@code phoneNumber} 用户属性。
+     * <p>
+     * 属性可能经 User Profile、管理端被改掉而不经过短信验证，按属性发码会让第二因子跟着改过的号码走。
+     * 凭据没有号码数据（旧数据）或不存在时回退到用户属性，并打 WARN；用户重新验证号码后凭据会补上号码。
+     *
+     * @param user       用户
+     * @param credential 短信 OTP 凭据，可为 {@code null}
+     * @return 号码；属性也没有时返回空号码（{@link PhoneNumber#isEmpty()} 为 {@code true}）
+     */
+    public PhoneNumber getMfaPhoneNumber(UserModel user, CredentialModel credential) {
+        PhoneNumber registered = registeredPhoneNumber(credential);
+        if (registered != null) {
+            return registered;
+        }
+        logger.warnf("用户 %s 的短信 OTP 凭据%s，回退到 phoneNumber 属性", user.getId(),
+                credential == null ? "不存在" : " " + credential.getId() + " 没有登记号码（旧数据）");
+        String attribute = user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER);
+        return attribute == null ? new PhoneNumber(null, null) : new PhoneNumber(attribute);
+    }
+
+    /**
+     * 读出凭据数据里登记的号码。
+     *
+     * @return 登记的号码；凭据为空、没有号码数据或数据无法解析时返回 {@code null}
+     */
+    static PhoneNumber registeredPhoneNumber(CredentialModel credential) {
+        if (credential == null || credential.getCredentialData() == null) {
+            return null;
+        }
+        try {
+            PhoneOtpCredentialModel.SmsOtpCredentialData data = JsonSerialization.readValue(
+                    credential.getCredentialData(), PhoneOtpCredentialModel.SmsOtpCredentialData.class);
+            PhoneNumber phoneNumber = new PhoneNumber(data.getAreaCode(), data.getPhoneNumber());
+            return phoneNumber.isEmpty() ? null : phoneNumber;
+        } catch (IOException e) {
+            logger.debugf(e, "无法解析短信 OTP 凭据 %s 的号码数据", credential.getId());
+            return null;
+        }
     }
 
     @Override

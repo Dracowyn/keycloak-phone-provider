@@ -19,10 +19,17 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -37,7 +44,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>Everybody 直授流程中同一验证码不能重放；</li>
  *   <li>连续输错 5 次只作废当前验证码，不清空重发冷却；</li>
  *   <li>注册表单 validate 阶段只校验不消费，其他字段出错时验证码仍可用，注册成功后号码被标记为已验证；</li>
- *   <li>首次配置短信 MFA：无号码用户可绑定新号码，已有已验证号码的用户不能借此换号。</li>
+ *   <li>首次配置短信 MFA：无号码用户可绑定新号码，已有已验证号码的用户不能借此换号；</li>
+ *   <li>号码绑定 / 解绑接口只认 Bearer，跨站带身份 Cookie 的请求被拒；</li>
+ *   <li>并发错误猜测绕不过输错上限，并发发送绕不过重发冷却。</li>
  * </ul>
  */
 class SecurityFixesIT {
@@ -50,6 +59,10 @@ class SecurityFixesIT {
     private static final Pattern CODE_IN_LOG = Pattern.compile(">>>\\s*([0-9]{4,8})");
     private static final Pattern FORM_ACTION = Pattern.compile("<form[^>]*action=\"([^\"]+)\"");
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String EVIL_ORIGIN = "https://evil.example";
+    /** 并发用例的请求数：与审查实测时的并发度一致。 */
+    private static final int CONCURRENT_GUESSES = 40;
+    private static final int CONCURRENT_SENDS = 20;
 
     private static KeycloakContainer keycloak;
 
@@ -299,6 +312,81 @@ class SecurityFixesIT {
         assertThat(credentialTypes(findUser("henry"))).contains("phone-otp");
     }
 
+    // ---------- 号码绑定接口只认 Bearer ----------
+
+    @Test
+    @DisplayName("update-profile 与 unset：只带身份 Cookie 的跨站写请求被拒（401），号码不变")
+    void phoneWritesRejectIdentityCookie() throws Exception {
+        Browser browser = loginWithSms("kate", "kate-pass");
+        assertThat(browser.cookies).containsKey("KEYCLOAK_IDENTITY");
+        String attacker = "13900000023";
+        String code = sendCodeAndAwait("verification-code", attacker);
+
+        HttpResponse<String> update = browser.send(crossSitePost("/update-profile",
+                form(Map.of("areaCode", "86", "phoneNumber", attacker, "smsCode", code))));
+        assertThat(update.statusCode()).as("Cookie 不应被认作登录身份: %s", update.body()).isEqualTo(401);
+        assertThat(JSON.readTree(update.body()).get("code").asText()).isEqualTo("AUTHENTICATION_REQUIRED");
+
+        HttpResponse<String> unset = browser.send(crossSitePost("/update-profile/unset", ""));
+        assertThat(unset.statusCode()).as("解绑也不认 Cookie: %s", unset.body()).isEqualTo(401);
+
+        JsonNode kate = findUser("kate");
+        assertThat(kate.path("attributes").path("phoneNumber").get(0).asText()).isEqualTo("+86 13900000011");
+        assertThat(kate.path("attributes").path("phoneNumberVerified").get(0).asText()).isEqualTo("true");
+    }
+
+    @Test
+    @DisplayName("update-profile：带 Bearer 的同一请求成功，号码换绑并标记为已验证")
+    void phoneWriteAcceptsBearerToken() throws Exception {
+        String own = "13900000021";
+        // Everybody 直授为新号码自动开户，用户名即号码
+        HttpResponse<String> grant = phoneGrant(own, sendCodeAndAwait("authentication-code", own));
+        assertThat(grant.statusCode()).as("取用户令牌: %s", grant.body()).isEqualTo(200);
+        String accessToken = JSON.readTree(grant.body()).get("access_token").asText();
+        String target = "13900000022";
+        String code = sendCodeAndAwait("verification-code", target);
+
+        HttpResponse<String> update = http().send(crossSitePost("/update-profile",
+                        form(Map.of("areaCode", "86", "phoneNumber", target, "smsCode", code)))
+                        .header("Authorization", "Bearer " + accessToken).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(update.statusCode()).as("Bearer 应通过认证: %s", update.body()).isEqualTo(204);
+
+        JsonNode user = findUser(own);
+        assertThat(user.path("attributes").path("phoneNumber").get(0).asText()).isEqualTo("+86 " + target);
+        assertThat(user.path("attributes").path("phoneNumberVerified").get(0).asText()).isEqualTo("true");
+    }
+
+    // ---------- 并发 ----------
+
+    @Test
+    @DisplayName("并发提交错误验证码绕不过 5 次上限：之后正确验证码也被拒")
+    void concurrentWrongCodesCannotBypassAttemptLimit() throws Exception {
+        for (String phone : List.of("13900000031", "13900000032")) {
+            String code = sendCodeAndAwait("authentication-code", phone);
+            String wrong = code.equals("000000") ? "111111" : "000000";
+
+            List<Integer> statuses = concurrently(CONCURRENT_GUESSES, () -> phoneGrant(phone, wrong).statusCode());
+            assertThat(statuses).as("错误验证码不应签发令牌").doesNotContain(200);
+
+            HttpResponse<String> correct = phoneGrant(phone, code);
+            assertThat(correct.statusCode()).as("并发输错 %d 次后正确验证码也应作废: %s", CONCURRENT_GUESSES,
+                    correct.body()).isEqualTo(401);
+        }
+    }
+
+    @Test
+    @DisplayName("同一号码并发发送只成功一次，其余按冷却中返回 429")
+    void concurrentSendsHonourResendCooldown() throws Exception {
+        for (String phone : List.of("13900000041", "13900000042")) {
+            List<Integer> statuses = concurrently(CONCURRENT_SENDS,
+                    () -> sendCode("verification-code", phone).statusCode());
+            assertThat(statuses).as("并发发送结果").containsOnly(200, 429);
+            assertThat(statuses.stream().filter(status -> status == 200).count())
+                    .as("冷却期内只能发出一条: %s", statuses).isEqualTo(1);
+        }
+    }
+
     private static JsonNode findUser(String username) throws Exception {
         JsonNode users = JSON.readTree(adminGet("/admin/realms/" + REALM + "/users?exact=true&username=" + username,
                 adminToken()).body());
@@ -371,13 +459,13 @@ class SecurityFixesIT {
                       ]
                     }
                   ],
-                  "users": [%3$s, %4$s, %5$s, %6$s, %7$s, %8$s, %9$s, %10$s]
+                  "users": [%3$s, %4$s, %5$s, %6$s, %7$s, %8$s, %9$s, %10$s, %11$s]
                 }
                 """.formatted(REALM, CLIENT_ID,
                 user("alice", "13900000001"), user("bob", "13900000002"), user("carol", "13900000003"),
                 user("dave", "13900000004"), user("erin", "13900000005"),
                 passwordOnlyUser("grace", null), passwordOnlyUser("henry", "13900000008"),
-                user("ivan", "13900000010"));
+                user("ivan", "13900000010"), user("kate", "13900000011"));
 
         HttpResponse<String> resp = http().send(HttpRequest.newBuilder(uri("/admin/realms"))
                         .header("Authorization", "Bearer " + adminToken())
@@ -463,6 +551,60 @@ class SecurityFixesIT {
                         .POST(HttpRequest.BodyPublishers.ofString(form(Map.of("areaCode", "86", "phoneNumber", phone))))
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** 发送验证码并从 dummy sender 日志里取回。 */
+    private static String sendCodeAndAwait(String endpoint, String phone) throws Exception {
+        int logMark = keycloak.getLogs().length();
+        HttpResponse<String> sent = sendCode(endpoint, phone);
+        assertThat(sent.statusCode()).as("发送 %s 到 %s: %s", endpoint, phone, sent.body()).isEqualTo(200);
+        String code = awaitCodeFromLog(logMark);
+        assertThat(code).as("应能从日志中捕获验证码").isNotNull();
+        return code;
+    }
+
+    /** 跨站来源的号码接口表单 POST，路径相对 {@code /realms/{realm}/sms}。 */
+    private static HttpRequest.Builder crossSitePost(String smsPath, String body) {
+        return HttpRequest.newBuilder(uri("/realms/" + REALM + "/sms" + smsPath))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("Origin", EVIL_ORIGIN)
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+    }
+
+    /** 完成密码 + 短信两步登录，返回持有登录 Cookie 的浏览器。 */
+    private static Browser loginWithSms(String username, String password) throws Exception {
+        Browser browser = new Browser();
+        int logMark = keycloak.getLogs().length();
+        HttpResponse<String> otpPage = browser.loginWithPassword(username, password);
+        assertThat(otpPage.body()).as("应进入短信验证码页面: %s", describe(otpPage)).contains("kc-sms-otp-form");
+        String code = awaitCodeFromLog(logMark);
+        assertThat(code).isNotNull();
+        HttpResponse<String> done = browser.submitForm(otpPage.body(), Map.of("smsCode", code));
+        assertThat(done.statusCode()).as("正确验证码应完成登录: %s", describe(done)).isEqualTo(302);
+        return browser;
+    }
+
+    /** 同时放出 {@code count} 个请求（先全部就绪再一起开始），按提交顺序返回结果。 */
+    private static <T> List<T> concurrently(int count, Callable<T> task) throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(count);
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            List<Future<T>> futures = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                futures.add(pool.submit(() -> {
+                    start.await();
+                    return task.call();
+                }));
+            }
+            start.countDown();
+            List<T> results = new ArrayList<>();
+            for (Future<T> future : futures) {
+                results.add(future.get(2, TimeUnit.MINUTES));
+            }
+            return results;
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     private static HttpResponse<String> phoneGrant(String phone, String code) throws Exception {

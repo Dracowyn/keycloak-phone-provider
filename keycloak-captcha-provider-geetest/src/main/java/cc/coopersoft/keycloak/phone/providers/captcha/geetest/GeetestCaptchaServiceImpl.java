@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.geetest.sdk.GeetestLib;
 import com.geetest.sdk.GeetestLibResult;
+import lombok.AccessLevel;
 import lombok.Setter;
 import org.apache.commons.codec.digest.HmacAlgorithms;
 import org.apache.commons.codec.digest.HmacUtils;
@@ -40,6 +41,16 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
     private static final String UNKNOWN_USER = "unknown";
     private static final String V4_API_DOMAIN = "https://gcaptcha4.geetest.com";
 
+    /**
+     * 极验 v4 校验接口的连接超时（毫秒）。不设超时时网络卡住会一直占着登录请求线程。
+     */
+    private static final int V4_CONNECT_TIMEOUT_MILLIS = 3000;
+
+    /**
+     * 极验 v4 校验接口的读取超时（毫秒），与 v3 SDK 的 5 秒一致。
+     */
+    private static final int V4_READ_TIMEOUT_MILLIS = 5000;
+
     // 极验3.0宕机模式按 challenge 登记：只有本服务在 register 失败时本地生成并登记过的 challenge，
     // 才允许走 failValidate（仅校验非空）。不能用进程级共享状态，否则一个用户初始化失败会让所有用户的校验被放行。
     private static final String OFFLINE_CHALLENGE_KEY_PREFIX = "geetest-v3-offline:";
@@ -54,6 +65,12 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
     private final KeycloakSession session;
     @Setter
     private Config.Scope config;
+
+    /**
+     * 极验 v4 接口地址，仅供测试替换为本地桩服务。
+     */
+    @Setter(AccessLevel.PACKAGE)
+    private String v4ApiDomain = V4_API_DOMAIN;
 
     public GeetestCaptchaServiceImpl(KeycloakSession session) {
         this.session = session;
@@ -180,29 +197,39 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
         queryParams.put("gen_time", genTime);
         queryParams.put("sign_token", signToken);
 
-        String url = String.format("%s/validate?captcha_id=%s", V4_API_DOMAIN, geetestId);
+        String url = String.format("%s/validate?captcha_id=%s", v4ApiDomain, geetestId);
+
+        // 构建请求体
+        StringBuilder postData = new StringBuilder();
+        for (Map.Entry<String, String> param : queryParams.entrySet()) {
+            if (!postData.isEmpty()) {
+                postData.append('&');
+            }
+            postData.append(URLEncoder.encode(param.getKey(), StandardCharsets.UTF_8));
+            postData.append('=');
+            postData.append(URLEncoder.encode(param.getValue(), StandardCharsets.UTF_8));
+        }
 
         try {
-            // 发送API请求
-            URL apiUrl = new URL(url);
-            HttpURLConnection conn = (HttpURLConnection) apiUrl.openConnection();
+            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setConnectTimeout(V4_CONNECT_TIMEOUT_MILLIS);
+            conn.setReadTimeout(V4_READ_TIMEOUT_MILLIS);
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
             conn.setDoOutput(true);
 
-            // 构建请求体
-            StringBuilder postData = new StringBuilder();
-            for (Map.Entry<String, String> param : queryParams.entrySet()) {
-                if (!postData.isEmpty()) {
-                    postData.append('&');
-                }
-                postData.append(URLEncoder.encode(param.getKey(), StandardCharsets.UTF_8));
-                postData.append('=');
-                postData.append(URLEncoder.encode(param.getValue(), StandardCharsets.UTF_8));
+            int status = sendRequest(conn, postData);
+            if (status >= 500) {
+                // 极验服务端故障，与连不上同属服务不可用
+                return allowOnServiceFailure("极验v4 API返回HTTP " + status, null);
+            }
+            if (status < 200 || status >= 300) {
+                // 4xx 等说明请求被拒（参数由请求方提交、可被构造），任何配置下都不放行
+                log.warnf("极验v4 API拒绝了校验请求（HTTP %d），人机验证不通过", status);
+                return false;
             }
 
-            // 发送请求并获取响应
-            String responseBody = sendRequest(conn, postData);
+            String responseBody = readResponse(conn);
             log.debug("极验v4 API响应: " + responseBody);
 
             // 解析响应结果
@@ -213,29 +240,55 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
             log.warn("极验v4验证失败: " + responseBody);
             return false;
 
-        } catch (Exception e) {
-            // 处理连接错误 - 如果API不可用，根据配置决定是否通过验证
-            log.warn("连接极验v4 API时出错: " + e.getMessage(), e);
-            return Optional.ofNullable(config.getBoolean("fallback_on_error")).orElse(true);
+        } catch (IOException e) {
+            // 连接失败、超时、DNS 解析失败等网络类异常
+            return allowOnServiceFailure("连接极验v4 API时出错: " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            log.error("处理极验v4校验时出错，人机验证不通过", e);
+            return false;
         }
     }
 
     /**
-     * 发送HTTP请求并获取响应
+     * 极验服务不可用（网络、超时类异常或服务端 5xx）时的处理：只有显式配置 {@code fallback_on_error=true} 才放行。
+     * <p>
+     * 默认不放行：攻击者能让校验请求出错（例如构造被拒的参数）时，默认放行等于没有人机验证。
+     */
+    private boolean allowOnServiceFailure(String reason, Exception cause) {
+        boolean fallback = Boolean.TRUE.equals(config.getBoolean("fallback_on_error"));
+        if (fallback) {
+            log.warnf(cause, "%s；已按 fallback_on_error=true 放行", reason);
+        } else {
+            log.warnf(cause, "%s；人机验证不通过（未开启 fallback_on_error）", reason);
+        }
+        return fallback;
+    }
+
+    /**
+     * 发送HTTP请求并取得状态码
      *
      * @param conn     HTTP连接
      * @param postData 请求数据
-     * @return 响应内容
+     * @return HTTP 状态码
      * @throws IOException 如果发生IO错误
      */
-    private static String sendRequest(HttpURLConnection conn, StringBuilder postData) throws IOException {
+    private static int sendRequest(HttpURLConnection conn, StringBuilder postData) throws IOException {
         // 发送请求数据
         try (OutputStream os = conn.getOutputStream()) {
             byte[] input = postData.toString().getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
         }
+        return conn.getResponseCode();
+    }
 
-        // 读取响应
+    /**
+     * 读取 2xx 响应的内容
+     *
+     * @param conn HTTP连接
+     * @return 响应内容
+     * @throws IOException 如果发生IO错误
+     */
+    private static String readResponse(HttpURLConnection conn) throws IOException {
         StringBuilder response = new StringBuilder();
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
@@ -272,14 +325,16 @@ public class GeetestCaptchaServiceImpl implements CaptchaService {
         // 确保用户ID不为空
         user = Optional.ofNullable(user).orElse(UNKNOWN_USER);
 
+        // 与 verify 用同一套必填检查：空白也算缺失
+        List<String> missingKeys = missingConfigKeys(config);
+        if (!missingKeys.isEmpty()) {
+            log.errorf("极验配置不完整，缺少配置键 %s，无法提供前端配置", missingKeys);
+            return "{\"success\":0,\"message\":\"极验ID或密钥未配置\"}";
+        }
+
         // 获取极验配置
         String geetestId = config.get("id");
         String geetestKey = config.get("key");
-
-        if (geetestId == null || geetestKey == null) {
-            log.error("必须配置极验ID和密钥");
-            return "{\"success\":0,\"message\":\"极验ID或密钥未配置\"}";
-        }
 
         // 获取极验版本，默认为3.0
         String geetestVersion = Optional.ofNullable(config.get("version")).orElse(DEFAULT_VERSION);

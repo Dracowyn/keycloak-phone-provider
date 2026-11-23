@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_FORM_URLENCODED;
@@ -56,6 +57,12 @@ public class TokenCodeResource {
      * 日志记录器
      */
     private static final Logger logger = Logger.getLogger(TokenCodeResource.class);
+
+    /**
+     * 「已部署人机验证实现但没有默认服务商」是部署配置错误，进程内只打一次 ERROR，之后降为 DEBUG，
+     * 否则每个发送请求都会刷一条 ERROR。
+     */
+    private static final AtomicBoolean MISSING_DEFAULT_CAPTCHA_LOGGED = new AtomicBoolean();
 
     /**
      * Keycloak会话
@@ -260,8 +267,13 @@ public class TokenCodeResource {
             return true;
         }
 
-        logger.error("已部署CaptchaService实现但没有默认服务商，拒绝发送；多个实现并存时须用 "
-                + "spi-captcha-service--provider=<provider-id> 指定其一（如 tencent、geetest、recaptcha）");
+        String message = "已部署CaptchaService实现但没有默认服务商，拒绝发送；多个实现并存时须用 "
+                + "spi-captcha-service--provider=<provider-id> 指定其一（如 tencent、geetest、recaptcha）";
+        if (MISSING_DEFAULT_CAPTCHA_LOGGED.compareAndSet(false, true)) {
+            logger.error(message);
+        } else {
+            logger.debug(message);
+        }
         return isTrustedClient(session, clientId, clientSecret);
     }
 

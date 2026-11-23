@@ -39,7 +39,6 @@
 | 开箱即用的多个生产短信服务商 | 当前只有阿里云生产发送实现；`dummy` 只输出日志，不发短信。新增发送商应参考阿里云模块的配置与结果处理，而非把 dummy 当生产实现 |
 | 内置生产登录主题 | 需单独部署前端项目提供的主题 |
 | 完整 reCAPTCHA 前后端集成 | 后端可校验 `g-recaptcha-response`，配置接口不返回站点密钥，且没有 POST 配置方法 |
-| Bearer 调用绑定、解绑 | 两个接口只接受 Keycloak 登录会话 Cookie |
 
 ### 兼容性
 
@@ -65,7 +64,7 @@
 | `keycloak-captcha-provider-recaptcha` / `keycloak-captcha-provider-recaptcha.jar` | reCAPTCHA 后端校验；配置接口不返回 siteKey | 按需，前端需自行集成 |
 | `keycloak-phone-provider-it` / 无部署 jar | Testcontainers 集成测试，默认不加入构建 | 不部署；通过 `it` profile 启用 |
 
-发送资源和各人机验证配置资源均获取当前默认的 `CaptchaService`，不根据请求路径或参数自动选厂商。最简单的部署是只安装一个人机验证模块；不要把三个模块一起复制后假定它们会自动匹配各自 URL。部署了多个模块时必须用 `spi-captcha-service--provider=<tencent|geetest|recaptcha>` 指定其一，否则发送资源拒绝请求（`CAPTCHA_REQUIRED`），配置资源返回 500。该选项是构建期选项，修改后须重新执行 `kc.sh build`（以 `start --optimized` 启动时不会自动重建）。
+发送资源和各人机验证配置资源均获取当前默认的 `CaptchaService`，不根据请求路径或参数自动选厂商。最简单的部署是只安装一个人机验证模块；不要把三个模块一起复制后假定它们会自动匹配各自 URL。部署了多个模块时必须用 `spi-captcha-service--provider=<tencent|geetest|recaptcha>` 指定其一，否则发送资源拒绝请求（`CAPTCHA_REQUIRED`），配置资源返回 500。用 `spi-captcha-service--<id>--enabled=false` 禁用唯一一个已部署的实现，等同于未部署，会跳过人机验证。该选项是构建期选项，修改后须重新执行 `kc.sh build`（以 `start --optimized` 启动时不会自动重建）。
 
 ### 构建与安装
 
@@ -195,7 +194,7 @@ spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 | `spi-captcha-service-geetest-id` | 未配置 | 极验应用 ID |
 | `spi-captcha-service-geetest-key` | 未配置 | 极验密钥 |
 | `spi-captcha-service-geetest-version` | `3` | 取 `3` 或 `4`，前端 SDK 与验证字段必须一致；源码仅在值为 `4` 时走 v4 |
-| `spi-captcha-service-geetest-fallback_on_error` | `true` | **命名例外，保留下划线**；仅 v4 捕获连接/处理异常时决定是否放行 |
+| `spi-captcha-service-geetest-fallback_on_error` | `false` | **命名例外，保留下划线**；仅 v4：显式设为 `true` 时，连接失败、超时与极验 HTTP 5xx 放行；HTTP 4xx 与处理异常任何配置下都拒绝。v4 请求连接超时 3 秒、读取超时 5 秒 |
 
 **ID 或密钥任一未配置（或空白）时人机验证一律不通过**，发送接口返回 `CAPTCHA_REQUIRED`，启动时打 ERROR；受信机密客户端除外。v3 的 `digestmod` 在源码中固定为 `md5`，不是可配置键。v3 初始化失败按 challenge 使用宕机模式，v4 的异常回退另受上表开关控制；字段和响应结构见 [API.md](./API.md#人机验证配置)。
 
@@ -228,6 +227,36 @@ spi-phone-provider-config-location-black-list=\u865a\u62df
 ## 认证流程配置
 
 以下路径采用“中文（English）”，英文标签按 Keycloak 26.8.1；内置流程别名为 `browser`、`direct grant`、`registration`、`reset credentials`。在身份验证（Authentication）> 流程（Flows）通过操作（Action）> 复制（Duplicate）创建副本，再编辑副本，不直接修改内置流程。添加执行器使用添加步骤（Add step）；需求（Requirement）按文中设置。绑定使用操作（Action）> 绑定流程（Bind flow），不沿用旧截图里的 Bindings 标签。
+
+### User Profile 属性声明
+
+插件把号码写在用户属性 `phoneNumber`（如 `+86 13800138000`），把验证状态写在 `phoneNumberVerified`（`true` / `false`），按号码查找用户时要求两者都满足。新 realm 的未托管属性策略默认是禁用，未声明时这两个属性在管理后台和账户控制台都看不到，但插件读写不受影响。
+
+需要在后台或账户控制台看到号码时，在 realm 设置（Realm settings）> 用户资料（User profile）> JSON 编辑器里，把下面两项**追加**到现有 `attributes` 列表，不要整段替换：
+
+```json
+{
+  "name": "phoneNumber",
+  "displayName": "${phoneNumber}",
+  "multivalued": false,
+  "permissions": { "view": ["admin", "user"], "edit": ["admin"] }
+},
+{
+  "name": "phoneNumberVerified",
+  "displayName": "${phoneNumberVerified}",
+  "multivalued": false,
+  "permissions": { "view": ["admin"], "edit": ["admin"] }
+}
+```
+
+以上声明已在 Keycloak 26.8.2 实测：三种注册动作、`/sms/update-profile` 绑定号码均正常写入；用户经账户控制台或 Account API 修改这两个属性返回 `error-user-attribute-read-only`，修改其他资料不受影响。
+
+- **不要给用户编辑权限**。插件判断「已验证」只看 `phoneNumberVerified`，不核对验证的是哪个号码；用户能直接改 `phoneNumber` 时，可以绕过短信验证换号，原验证标记仍然有效。用户改号只能走 `/sms/update-profile`。
+- **不要把未托管属性策略设为「启用（Enabled）」**。该策略下用户可以自行写入 `phoneNumberVerified`，邮箱注册表单里也能注入一个未经短信验证的「已验证号码」。
+- **不要加 `required` 或 `pattern` 等格式校验器**。注册表单用同名字段提交不带区号的号码，校验器会让注册失败，默认主题不显示只读字段的错误，页面上看不到原因。
+- `displayName` 需要主题提供对应文案，没有时可以直接写中文名称。
+- 管理员在后台改号码时，`phoneNumberVerified` 不会自动失效，由管理员自行负责。短信 MFA 不受影响：发码和校验用的是短信 OTP 凭据里登记的号码，用户经 `/sms/update-profile` 重新验证号码后凭据才会更新。
+- 插件发现上述危险配置（这两个属性对用户可编辑，或未托管属性策略为启用而 `phoneNumberVerified` 未声明）时，会按 realm 打一次 ERROR 日志：在该 realm 首次用到插件的验证码服务时检查，每个进程每个 realm 只查一次，改配置后需重启才会重新检查；读不到 User Profile 配置时跳过。
 
 ### 浏览器短信 MFA
 
@@ -263,7 +292,7 @@ spi-phone-provider-config-location-black-list=\u865a\u62df
 
 ### 注册
 
-**前置条件：** realm 设置（Realm settings）> 登录（Login）启用用户注册（User registration）；部署支持注册字段的主题。realm 设置（Realm settings）> 用户资料（User profile）必须声明 `phoneNumber` 属性并配置相应访问权限，尤其使用手机号创建动作时，未声明属性会被 User Profile 丢弃。仅手机号注册还需调整姓名、邮箱等必填规则；隐藏页面字段不会取消后端要求。
+**前置条件：** realm 设置（Realm settings）> 登录（Login）启用用户注册（User registration）；部署支持注册字段的主题。号码由插件在注册成功阶段直接写入用户属性，不经过 User Profile，无需为注册给 `phoneNumber` 配置用户编辑权限；需要声明时按 [User Profile 属性声明](#user-profile-属性声明) 配置。使用手机号创建动作（`registration-phone-username-creation`）时，主题必须以 `username=<号码>` 提交用户名，否则返回 400。仅手机号注册还需调整姓名、邮箱等必填规则；隐藏页面字段不会取消后端要求。
 
 **步骤：** 复制 `registration`，在注册表单子流程内按下表选配动作，新增项设为必需（Required）。保留且只使用一个用户创建动作，把创建动作放在验证动作之前；仅手机号方案可用手机号创建动作替换 `Registration User Creation`，手机号/邮箱二选一方案保留普通用户创建。通过绑定流程（Bind flow）选择注册流程（Registration flow）。
 
@@ -312,7 +341,7 @@ spi-phone-provider-config-location-black-list=\u865a\u62df
 | POST | `/sms/reset-code` | 重置凭据验证码 | 同上；需已验证号码用户 |
 | POST | `/sms/verification-code` | 绑定或首次配置 MFA 验证码 | 人机验证，或有效客户端 ID 与密钥豁免失败结果 |
 | GET、POST | `/sms/{发送端点}/resend-expires` | 五个发送端点各自的重发冷却查询 | 无 |
-| POST | `/sms/update-profile` | 验证并绑定手机号 | Keycloak Identity Cookie；不支持 Bearer |
+| POST | `/sms/update-profile` | 验证并绑定手机号 | 用户 Bearer 访问令牌；不认 Identity Cookie（防跨站请求伪造） |
 | POST | `/sms/update-profile/unset` | 解绑号码与短信 OTP 凭据 | 同上；另有配置与邮箱验证前置条件 |
 | GET、POST、OPTIONS | `/geetest/code` | 极验配置与预检 | 不强制登录 |
 | GET、POST、OPTIONS | `/tencent/code` | 腾讯云配置与预检 | 不强制登录 |
@@ -366,11 +395,12 @@ curl -X POST '<base-url>/realms/<realm>/protocol/openid-connect/token' \
 | 真实发送商 | 显式配置 `sender-service=aliyun`，已部署对应 jar，模板、签名、权限与真实发送验证通过；不依赖默认 dummy，不假定配置错误会回退 |
 | 不部署 dummy | `providers/` 中没有 `keycloak-sms-provider-dummy.jar`，避免验证码进入 info 日志 |
 | 人机验证选型 | 安装并确认实际选中实现；腾讯四个必填键、极验 ID/密钥、reCAPTCHA secret 全部配齐，缺项会一律拒绝；多个模块并存须用 `spi-captcha-service--provider` 指定其一并重新 `kc.sh build`；未部署任何实现时跳过人机验证 |
-| 故障放行策略 | 显式决定腾讯 `allow-disaster-ticket` 与 `fallback-on-error`、极验 v4 `fallback_on_error`；腾讯容灾票据默认放行可被自行构造，安全敏感场景应评估设为 `false` |
+| 故障放行策略 | 显式决定腾讯 `allow-disaster-ticket` 与 `fallback-on-error`、极验 v4 `fallback_on_error`（默认 `false`）；腾讯容灾票据默认放行可被自行构造，安全敏感场景应评估设为 `false` |
 | 客户端密钥 | 已启用的机密客户端凭正确 `client_id` + `client_secret` 可豁免人机验证失败结果，secret 只能放可信后端；**已有登录 Cookie 并不自动豁免人机验证** |
 | 反向代理与真实 IP | 人机验证把 Keycloak 连接的 `remoteAddr` 发给厂商；按 [Keycloak 26.8.1 代理指南](https://github.com/keycloak/keycloak/blob/26.8.1/docs/guides/server/reverseproxy.adoc)配置可信代理，并由代理覆盖转发头，避免伪造或全变为代理 IP |
 | 区号文件 | `areacode.json` 已放到配置路径、进程可读、内容有效；`GET /sms` 返回许可列表 |
-| 主题与资料 | `phone` 已单独部署，补齐 `smsOtpPhoneNumberMismatch` 文案，声明 `phoneNumber`，必填字段与各流程一致 |
+| 主题与资料 | `phone` 已单独部署，补齐 `smsOtpPhoneNumberMismatch` 文案，必填字段与各流程一致 |
+| User Profile | 如声明 `phoneNumber` / `phoneNumberVerified`，两者都只给管理员编辑权限，未托管属性策略不设为启用，不加格式校验器；见 [User Profile 属性声明](#user-profile-属性声明) |
 | 数据库迁移 | 验证码表为 `PHONE_MESSAGE_TOKEN_CODE`；`ATTEMPTS` 由 Liquibase `token-code-attempts` 自动迁移，有列存在前置检查，无需手工加列；按数据库变更流程备份与观察启动日志 |
 | 短信防滥用 | 不把现有小时记录阈值当作严格“每号码每类型每小时最多 3 次”；实际 `>3` 边界与成功消费清记录的影响见 [API.md](./API.md#频控与验证码生命周期) |
 
@@ -384,7 +414,7 @@ curl -X POST '<base-url>/realms/<realm>/protocol/openid-connect/token' \
 | 单元测试 | `mvn -B test` | 默认模块测试，不启动集成测试模块 |
 | 集成测试 | `mvn -B -Pit verify` | 需要可用 Docker；`it` profile 才加入集成测试模块，使用真实 Keycloak 容器 |
 
-`PhoneProviderIT` 覆盖 provider/SPI/JPA/Liquibase 加载、短信配置、dummy 发码持久化与重发查询。`SecurityFixesIT` 覆盖伪造及跨用户短信 Cookie 不可豁免、本人签名 Cookie 可用、Everybody 验证码不可重放、输错 5 次后保留冷却且更早发出的验证码不会重新生效、注册其他字段错误不提前消费验证码，以及首次 MFA 绑定新号码和禁止替换已有已验证号码。测试使用隔离 dummy 与 `phone-it` 主题，不能替代生产发送商和前端主题验收，也没有证明严格的小时配额。
+`PhoneProviderIT` 覆盖 provider/SPI/JPA/Liquibase 加载、短信配置、dummy 发码持久化与重发查询。`SecurityFixesIT` 覆盖伪造及跨用户短信 Cookie 不可豁免、本人签名 Cookie 可用、Everybody 验证码不可重放、输错 5 次后保留冷却且更早发出的验证码不会重新生效、注册其他字段错误不提前消费验证码，首次 MFA 绑定新号码和禁止替换已有已验证号码，以及绑定接口拒绝只带 Identity Cookie（含跨站 Origin）、接受 Bearer，并发错误猜测不能绕过 5 次上限，并发发送遵守重发冷却。测试使用隔离 dummy 与 `phone-it` 主题，不能替代生产发送商和前端主题验收，也没有证明严格的小时配额。
 
 ### 发版约定
 

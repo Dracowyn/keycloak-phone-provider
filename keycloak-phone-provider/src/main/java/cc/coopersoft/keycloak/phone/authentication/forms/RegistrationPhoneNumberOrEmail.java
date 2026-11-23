@@ -139,7 +139,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
         context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
 
         // 验证手机号是否已被使用
-        if (UserUtils.findUserByPhone(session.users(), context.getRealm(), phoneNumber) != null) {
+        if (UserUtils.isPhoneNumberInUse(session.users(), context.getRealm(), phoneNumber)) {
             formData.remove(PhoneConstants.FIELD_PHONE_NUMBER);
             context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
             errors.add(new FormMessage(PhoneConstants.FIELD_PHONE_NUMBER, PhoneConstants.PHONE_EXISTS));

@@ -43,7 +43,7 @@
 | --- | --- |
 | `GET /sms`、各 `resend-expires` | 无需登录 |
 | 五个短信发送端点 | 无需登录；按当前选中的人机验证实现校验提交参数，详见[发送参数](#发送参数与人机验证字段) |
-| `/sms/update-profile`、`/sms/update-profile/unset` | **只接受 Keycloak Identity Cookie 登录会话，不支持 Bearer Token**；仅携带 `Authorization: Bearer …` 仍会返回 `401 AUTHENTICATION_REQUIRED` |
+| `/sms/update-profile`、`/sms/update-profile/unset` | **只接受当前用户的 Bearer 访问令牌**（`Authorization: Bearer …`），不认 Keycloak Identity Cookie，也不会回退到 Cookie；只带 Cookie 返回 `401 AUTHENTICATION_REQUIRED`。身份 Cookie 是 `SameSite=None`，认它会让任意站点用跨站表单以用户身份换绑、解绑号码 |
 | `/geetest/code`、`/tencent/code`、`/recaptcha/code` | 构造资源时先尝试 Identity Cookie，再尝试 Bearer；均未要求必须登录才能获取配置 |
 | OIDC `/protocol/openid-connect/token` | 按 Keycloak 客户端认证与直授流程处理，不要求 Identity Cookie |
 
@@ -90,8 +90,8 @@ Content-Type: application/json
 | GET、POST | `/sms/login-code/resend-expires` | 查询登录验证码重发时间 | 无 |
 | GET、POST | `/sms/reset-code/resend-expires` | 查询重置验证码重发时间 | 无 |
 | GET、POST | `/sms/verification-code/resend-expires` | 查询验证验证码重发时间 | 无 |
-| POST | `/sms/update-profile` | 校验 `VERIFY` 验证码并绑定手机号 | Identity Cookie，不支持 Bearer |
-| POST | `/sms/update-profile/unset` | 解绑手机号并删除短信 OTP 凭据 | Identity Cookie，不支持 Bearer |
+| POST | `/sms/update-profile` | 校验 `VERIFY` 验证码并绑定手机号 | Bearer 访问令牌，不认 Identity Cookie |
+| POST | `/sms/update-profile/unset` | 解绑手机号并删除短信 OTP 凭据 | Bearer 访问令牌，不认 Identity Cookie |
 | GET、POST、OPTIONS | `/geetest/code` | 极验初始化配置、CORS 预检 | 无强制登录要求 |
 | GET、POST、OPTIONS | `/tencent/code` | 腾讯云应用配置、CORS 预检 | 无强制登录要求 |
 | GET、OPTIONS | `/recaptcha/code` | reCAPTCHA 配置资源、CORS 预检 | 无强制登录要求；**未实现 POST** |
@@ -330,7 +330,7 @@ curl -X POST '<base-url>/realms/<realm>/sms/verification-code/resend-expires' \
 
 ### POST /sms/update-profile
 
-必须由携带有效 Keycloak Identity Cookie 的浏览器会话发起。验证码应先从 `/sms/verification-code` 获取；`registration-code`、`authentication-code` 等类型不能替代。
+必须在 `Authorization` 头携带该用户的有效访问令牌（`Bearer`），令牌由用户经当前 realm 的 OIDC 客户端登录取得；插件不检查令牌的 audience。只带 Identity Cookie 的请求一律返回 401。验证码应先从 `/sms/verification-code` 获取；`registration-code`、`authentication-code` 等类型不能替代。
 
 | 参数 | 是否必填 | 说明 |
 | --- | --- | --- |
@@ -338,13 +338,15 @@ curl -X POST '<base-url>/realms/<realm>/sms/verification-code/resend-expires' \
 | `phoneNumber` | 是 | 手机号字符串；不接受 `phone_number` |
 | `smsCode` | 是 | `VERIFY` 类型验证码；全空白视为缺失，非空值不会在比对前自动去掉空格 |
 
-JSON 请求示例，浏览器自动携带已有会话 Cookie；不是提交 Bearer：
+JSON 请求示例，`accessToken` 是该用户的访问令牌：
 
 ```javascript
 const response = await fetch('<base-url>/realms/<realm>/sms/update-profile', {
   method: 'POST',
-  credentials: 'include',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json'
+  },
   body: JSON.stringify({
     areaCode: '86',
     phoneNumber: '13800000000',
@@ -357,7 +359,7 @@ if (response.status !== 204) {
 }
 ```
 
-相同会话下的 form 请求体为：
+form 请求同样要带 Bearer 头，请求体为：
 
 ```text
 areaCode=86&phoneNumber=13800000000&smsCode={{SMS_CODE}}
@@ -373,8 +375,8 @@ HTTP/1.1 204 No Content
 
 | HTTP | 错误码 | 全部明确失败分支 |
 | --- | --- | --- |
-| 400 | `INVALID_REQUEST` | JSON 解析失败；发生在会话检查之前 |
-| 401 | `AUTHENTICATION_REQUIRED` | Identity Cookie 未认证；只有 Bearer 也属于此情况 |
+| 401 | `AUTHENTICATION_REQUIRED` | 没有 Bearer、令牌无效或过期，或 `Authorization` 不是 Bearer 格式；只带 Identity Cookie 也属于此情况。先于请求体解析检查 |
+| 400 | `INVALID_REQUEST` | 已认证，但 JSON 解析失败 |
 | 400 | `PHONE_NUMBER_REQUIRED` | 已认证，但区号或号码为空 |
 | 400 | `VERIFICATION_CODE_REQUIRED` | `smsCode` 缺失或全空白 |
 | 400 | `VERIFICATION_CODE_INVALID` | 有有效 `VERIFY` 记录，但验证码不匹配；本次失败计数递增 |
@@ -384,13 +386,15 @@ HTTP/1.1 204 No Content
 
 ### POST /sms/update-profile/unset
 
-接受 `application/json` 或 form；没有业务参数，不需要短信验证码，但必须携带 Identity Cookie。
+接受 `application/json` 或 form；没有业务参数，不需要短信验证码，但必须携带 Bearer 访问令牌。
 
 ```javascript
 const response = await fetch('<base-url>/realms/<realm>/sms/update-profile/unset', {
   method: 'POST',
-  credentials: 'include',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json'
+  },
   body: '{}'
 });
 if (response.status !== 204) {
@@ -403,7 +407,7 @@ if (response.status !== 204) {
 
 | HTTP | 错误码 | 按执行顺序列出的失败分支 |
 | --- | --- | --- |
-| 401 | `AUTHENTICATION_REQUIRED` | 未通过 Identity Cookie 认证；不支持 Bearer |
+| 401 | `AUTHENTICATION_REQUIRED` | 没有有效 Bearer 访问令牌；只带 Identity Cookie 也属于此情况 |
 | 403 | `PHONE_UNSET_NOT_ALLOWED` | `spi-phone-provider-config-allow-unset=false` |
 | 400 | `EMAIL_NOT_VERIFIED` | 当前用户邮箱未验证；该分支消息为“取消绑定手机号前需要先验证邮箱” |
 
@@ -593,7 +597,7 @@ Everybody 流程在验证码通过后，若找不到已验证号码用户，则�
 | `INVALID_REQUEST` | 400 | 请求格式错误 | 发送、重发查询、绑定的 JSON 解析失败 |
 | `AREA_NOT_SUPPORTED` | 403 | 该地区暂不支持 | 发送时区号不在许可列表或列表加载失败 |
 | `USER_NOT_FOUND` | 404 | 用户不存在 | 仅认证、登录、重置发送接口；认证发送有 Everybody 例外 |
-| `AUTHENTICATION_REQUIRED` | 401 | 需要登录 | 绑定、解绑缺少有效 Identity Cookie |
+| `AUTHENTICATION_REQUIRED` | 401 | 需要登录 | 绑定、解绑缺少有效 Bearer 访问令牌（Identity Cookie 不被认可） |
 | `EMAIL_NOT_VERIFIED` | 400 | 邮箱未验证 | 解绑前邮箱未验证 |
 | `PHONE_UNSET_NOT_ALLOWED` | 403 | 不允许取消绑定手机号 | 解绑开关关闭 |
 | `TOKEN_NOT_FOUND` | 404 | 验证码不存在或已失效 | 重发时间查询无冷却记录或冷却已结束；不等同于验证码校验结果 |
@@ -653,6 +657,12 @@ Content-Type: application/json
 | 号码验证状态 | `VERIFY_PHONE_OR_EMAIL` 要求号码非空且 `phoneNumberVerified=true` 才认定已验证；绑定号码会取消同号码其他账户的验证状态，不是删除其他账户的号码属性 |
 | 极验 v3 宕机隔离 | 只有本服务初始化失败后登记的 challenge 才走本地宕机校验，登记存在 Keycloak 一次性对象存储中，有效期 10 分钟，校验时消费；宕机验证本身只检查三字段非空，不是第三方真实校验，不再使用进程共享的宕机状态 |
 | 腾讯验证协议 | 后端 `DescribeCaptchaResult` 固定使用协议值 `CaptchaType=9`；旧配置不再改变该参数，非 9 仅告警；不能用它来选择滑块、点选等前端样式 |
+| 绑定、解绑只认 Bearer | `/sms/update-profile` 与 `/unset` 不再接受 Identity Cookie，防跨站请求伪造；前端须改为携带用户访问令牌，见[绑定与解绑手机号](#绑定与解绑手机号) |
+| 并发校验 | 比对验证码前对该条记录加悲观写锁，并发提交错误验证码也最多比对 5 次，之后正确验证码同样失效 |
+| 并发发送 | 同一 realm、号码、用途的发送按一次性对象原子占位，并发请求只有一个真正发出，其余返回 `RESEND_TOO_SOON`（可能不带 `details.resendExpires`）；发送失败释放占位 |
+| 短信 MFA 号码 | 发码与校验使用短信 OTP 凭据里登记的号码，不再读 `phoneNumber` 属性；旧凭据没有号码数据时回退到属性并打 WARN，用户重新验证号码后凭据补上号码 |
+| 同号多个已验证账户 | 按号码查用户时匹配到多个已验证账户返回「用户不存在」并打 ERROR（只记账户 ID 与号码后 4 位），不再随机取一个；注册与 Everybody 自动开户把这种号码视为已占用，Everybody 返回 `USER_CONFLICT`，不建新账户 |
+| 极验 v4 异常 | `fallback_on_error` 默认改为 `false`；连接 3 秒、读取 5 秒超时；只有网络、超时类异常与 HTTP 5xx 在显式开启时放行，HTTP 4xx 与处理异常任何配置下都拒绝 |
 
 ### 2.2.1 首次配置短信 MFA
 
@@ -667,7 +677,7 @@ Content-Type: application/json
 
 主题应补充 `smsOtpPhoneNumberMismatch` 文案，不能继续假设失败时会转到改号页。这是 Keycloak 必需操作表单行为，不是一个新增的 `ApiError` REST 端点。
 
-`SecurityFixesIT` 源码覆盖伪造及他人 Cookie、本人合法 Cookie、Everybody 验证码重放、连续 5 次错误后保留冷却、注册其他字段错误不消费验证码，以及上述首次配置绑定/拒绝换号；这些场景不涵盖所有运行环境，也没有证明“每小时最多 3 次”的硬上限。
+`SecurityFixesIT` 源码覆盖伪造及他人 Cookie、本人合法 Cookie、Everybody 验证码重放、连续 5 次错误后保留冷却、注册其他字段错误不消费验证码、上述首次配置绑定/拒绝换号，以及绑定接口拒绝 Identity Cookie、接受 Bearer、并发错误猜测不能绕过 5 次上限、并发发送遵守重发冷却；这些场景不涵盖所有运行环境，也没有证明“每小时最多 3 次”的硬上限。
 
 ## 腾讯云验证码容灾票据
 
@@ -703,7 +713,7 @@ trerror_<错误码>_<应用ID>_<时间戳>
 | 腾讯配置路径 | 错误文档曾写 `/tencent-captcha/code` | `/tencent/code` |
 | 手机号字段 | 有些接口兼容下划线字段 | 全部新代码统一 `areaCode`、`phoneNumber` |
 | 短信验证码字段 | 错误文档或示例曾写 `code` | 所有新代码统一 `smsCode`，包含绑定、直授及主题表单 |
-| 更新手机号认证 | 错误文档曾示例 Bearer | 使用 Keycloak Identity Cookie，Bearer 不能代替 |
+| 更新手机号认证 | 旧版只认 Identity Cookie | 自未发布版本起只认 Bearer 访问令牌，Cookie 不能代替 |
 | OIDC 错误处理 | 不能混同短信业务状态 | 继续按 OAuth `error`、`error_description` 处理 |
 
 ### 更新请求封装
@@ -727,8 +737,10 @@ async function requestPluginJson(url, options = {}) {
 
 await requestPluginJson('<base-url>/realms/<realm>/sms/update-profile', {
   method: 'POST',
-  credentials: 'include',
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json'
+  },
   body: JSON.stringify({
     areaCode: '86',
     phoneNumber: '13800000000',
@@ -746,7 +758,7 @@ await requestPluginJson('<base-url>/realms/<realm>/sms/update-profile', {
 | `captchaNotCompleted` | `CAPTCHA_REQUIRED`；不等待从未启用的 `CAPTCHA_INVALID` |
 | `areaNotSupported` | `AREA_NOT_SUPPORTED` |
 | `userNotExists` | `USER_NOT_FOUND`，核对是否发送了正确类型 |
-| `needAuth` | `AUTHENTICATION_REQUIRED`，恢复 Identity Cookie 会话，不能只补 Bearer |
+| `needAuth` | `AUTHENTICATION_REQUIRED`，补上或刷新用户的 Bearer 访问令牌；登录会话 Cookie 不起作用 |
 | `needVerifiedEmail` | `EMAIL_NOT_VERIFIED` |
 | `unsetPhoneNumberNotAllowed` | `PHONE_UNSET_NOT_ALLOWED` |
 | `illegalPhoneNumber` | `ILLEGAL_PHONE_NUMBER`，HTTP 403 |
@@ -761,7 +773,7 @@ await requestPluginJson('<base-url>/realms/<realm>/sms/update-profile', {
 | --- | --- |
 | 五类发码 | 正确类型、缺号码/区号、区号格式、许可地区、三类需已注册用户的端点、Everybody 新号码 |
 | 人机验证 | 实际选中实现的字段、缺参数、校验失败、配置缺失时一律拒绝、可信后端密钥路径；登录会话本身不豁免 |
-| 绑定与解绑 | Identity Cookie 与仅 Bearer 的差异、`smsCode`、204 空体、绑定错误/过期、禁止解绑、邮箱未验证、凭据删除 |
+| 绑定与解绑 | 只带 Identity Cookie 被拒、Bearer 通过、`smsCode`、204 空体、绑定错误/过期、禁止解绑、邮箱未验证、凭据删除 |
 | 生命周期 | 五次不匹配后作废、成功后不可重放、注册其他字段失败后仍可提交 |
 | 冷却 | 429 的可选详情、GET/POST JSON/form 三种查询、冷却结束后 404 |
 | 人机配置与跨域 | v3 完整响应、v4 响应、腾讯路径、reCAPTCHA 不提供 siteKey、实际 CORS 头而非仅检查 OPTIONS 200 |

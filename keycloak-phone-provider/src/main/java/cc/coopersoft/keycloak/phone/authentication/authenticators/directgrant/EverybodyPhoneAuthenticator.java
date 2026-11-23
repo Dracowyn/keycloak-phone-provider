@@ -52,6 +52,12 @@ public class EverybodyPhoneAuthenticator extends AuthenticationCodeAuthenticator
     UserModel user = UserUtils.findUserByPhone(context.getSession().users(),
             context.getRealm(), phoneNumber);
     if (user == null){
+      // 同号码有多个已验证账户时 findUserByPhone 也返回 null：此时不能开新户，
+      // 否则 tokenValidated 会把号码标给新户、取消其他账户的验证，等于凭一条验证码接管号码
+      if (UserUtils.isPhoneNumberInUse(context.getSession().users(), context.getRealm(), phoneNumber)) {
+        invalidCredentials(context, AuthenticationFlowError.USER_CONFLICT);
+        return;
+      }
       if (context.getSession().users().getUserByUsername(context.getRealm(), phoneNumber.getPhoneNumber()) != null){
         invalidCredentials(context,AuthenticationFlowError.USER_CONFLICT);
         return;

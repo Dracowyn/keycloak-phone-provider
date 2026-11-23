@@ -20,6 +20,19 @@ import java.time.LocalDateTime;
                         "AND t.expiresAt >= :now AND t.type = :type " +
                         "ORDER BY t.createdAt DESC"
         ),
+        // 与 currentProcess 条件相同但只取 ID：校验前再按 ID 加锁，见 TokenCodeServiceImpl#lockCurrentProcessEntity
+        @NamedQuery(
+                name = "currentProcessId",
+                query = "SELECT t.id FROM TokenCodeEntity t WHERE t.realmId = :realmId " +
+                        "AND t.areaCode = :areaCode AND t.phoneNumber = :phoneNumber " +
+                        "AND t.expiresAt >= :now AND t.type = :type " +
+                        "ORDER BY t.createdAt DESC"
+        ),
+        // 按主键取单条，由调用方设悲观写锁；不分页、不排序，各数据库都能直接 SELECT ... FOR UPDATE
+        @NamedQuery(
+                name = "tokenCodeById",
+                query = "SELECT t FROM TokenCodeEntity t WHERE t.id = :id"
+        ),
         @NamedQuery(
                 name = "getAll",
                 query = "SELECT t FROM TokenCodeEntity t WHERE t.realmId = :realmId " +

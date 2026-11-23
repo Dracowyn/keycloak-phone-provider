@@ -11,6 +11,7 @@ import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresent
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.UserProfileRiskCheck;
 import org.jboss.logging.Logger;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
 import org.keycloak.credential.CredentialModel;
@@ -20,6 +21,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.NoResultException;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ForbiddenException;
@@ -53,6 +55,8 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         if (getRealm() == null) {
             throw new IllegalStateException("The service cannot accept a session without a realm in its context.");
         }
+        // 插件的收发与校验都会经过本服务，在这里对每个 realm 惰性做一次 User Profile 风险检查
+        UserProfileRiskCheck.checkOnce(session, getRealm());
     }
 
     private EntityManager getEntityManager() {
@@ -74,7 +78,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
      * <p>
      * 命名查询 {@code currentProcess} 已按 {@code createdAt} 降序排序，配合 {@code setMaxResults(1)}
      * 只取最新一条，避免并发双发产生多行有效记录时 {@code getSingleResult()} 抛
-     * {@code NonUniqueResultException}。返回的是托管实体，可直接修改（如递增 attempts）后随事务落库。
+     * {@code NonUniqueResultException}。不加锁，只供只读查询；比对验证码要用 {@link #lockCurrentProcessEntity}。
      *
      * @param phoneNumber   手机号
      * @param tokenCodeType 验证码类型
@@ -92,6 +96,60 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                 .getResultStream()
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * 取当前有效的验证码并加悲观写锁，供比对使用。
+     * <p>
+     * 比对和失败计数必须在同一把行锁下完成：不加锁时并发请求读到同一个 attempts，「读、加一、写」互相覆盖，
+     * 并发提交几十个猜测就能绕过 {@link #MAX_VERIFICATION_ATTEMPTS} 次上限。锁持有到事务结束，
+     * 同一条验证码的比对（包括比对成功的路径）因此串行；后到的请求拿到锁时看到的是已提交的 attempts 和过期时间，
+     * 验证码已被作废或已被消费时直接判无效，不再比对。
+     * <p>
+     * 先只查 ID，再按主键加锁：带分页、排序的锁定查询在部分数据库上会退化成「先查后锁」，拿到的仍是旧值；
+     * 按主键的锁定查询在行被并发删除（验证码已被成功消费）时返回空结果，{@code refresh} 则会抛异常并把事务标记为回滚。
+     *
+     * @param phoneNumber   手机号
+     * @param tokenCodeType 验证码类型
+     * @return 已加锁且仍可比对的验证码实体，不存在时返回 {@code null}
+     */
+    private TokenCodeEntity lockCurrentProcessEntity(PhoneNumber phoneNumber, TokenCodeType tokenCodeType) {
+        EntityManager em = getEntityManager();
+        String id = em.createNamedQuery("currentProcessId", String.class)
+                .setParameter("realmId", getRealm().getId())
+                .setParameter("areaCode", phoneNumber.getAreaCode())
+                .setParameter("phoneNumber", phoneNumber.getPhoneNumber())
+                .setParameter("now", LocalDateTime.now())
+                .setParameter("type", tokenCodeType.name())
+                .setMaxResults(1)
+                .getResultStream()
+                .findFirst()
+                .orElse(null);
+        if (id == null) {
+            return null;
+        }
+        TokenCodeEntity entity = em.createNamedQuery("tokenCodeById", TokenCodeEntity.class)
+                .setParameter("id", id)
+                .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+                .getResultStream()
+                .findFirst()
+                .orElse(null);
+        if (entity == null) {
+            return null;
+        }
+        // 实体若在本事务中已被加载过，锁定查询不会覆盖持久化上下文里的旧状态。此时已持有行锁，
+        // 带锁刷新一次取最新提交值（MySQL 默认的可重复读下，不带锁的读仍会读到事务快照）
+        em.refresh(entity, LockModeType.PESSIMISTIC_WRITE);
+        return isComparable(entity) ? entity : null;
+    }
+
+    /**
+     * 加锁后复核：等锁期间验证码可能已被其他请求作废（过期时间改到过去），或输错次数已达上限。
+     */
+    private static boolean isComparable(TokenCodeEntity entity) {
+        int attempts = entity.getAttempts() == null ? 0 : entity.getAttempts();
+        return entity.getExpiresAt() != null && !entity.getExpiresAt().isBefore(LocalDateTime.now())
+                && attempts < MAX_VERIFICATION_ATTEMPTS;
     }
 
     /**
@@ -239,9 +297,10 @@ public class TokenCodeServiceImpl implements TokenCodeService {
      * 不能删除该号码的全部记录：最近1小时的记录是 {@link #isAbusing} 与 {@link #canResend} 的频控依据，
      * 删除后攻击者每猜错5次就能换来一轮新的发送额度。
      * <p>
-     * 仅应在真正的验证入口（非委托重载）调用，避免重复计数。
+     * 仅应在真正的验证入口（非委托重载）调用，避免重复计数。调用方须已通过
+     * {@link #lockCurrentProcessEntity} 持有该行的悲观写锁，「读、加一、写」才不会被并发请求覆盖。
      *
-     * @param tokenCode 当前验证码托管实体
+     * @param tokenCode 当前验证码托管实体（已加锁）
      */
     private void registerFailedAttempt(TokenCodeEntity tokenCode) {
         int attempts = (tokenCode.getAttempts() == null ? 0 : tokenCode.getAttempts()) + 1;
@@ -306,7 +365,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
 
     @Override
     public TokenCodeRepresentation checkCode(PhoneNumber phoneNumber, String code, TokenCodeType tokenCodeType) {
-        TokenCodeEntity tokenCode = currentProcessEntity(phoneNumber, tokenCodeType);
+        TokenCodeEntity tokenCode = lockCurrentProcessEntity(phoneNumber, tokenCodeType);
         if (tokenCode == null || !matchOrRecordFailure(tokenCode, code)) {
             return null;
         }
@@ -354,7 +413,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
         TokenCodeType tokenCodeType = TokenCodeType.VERIFY;
         logger.info(String.format("valid %s , phone: %s", tokenCodeType, phoneNumber.getFullPhoneNumber()));
 
-        TokenCodeEntity tokenCode = currentProcessEntity(phoneNumber, tokenCodeType);
+        TokenCodeEntity tokenCode = lockCurrentProcessEntity(phoneNumber, tokenCodeType);
         if (tokenCode == null) {
             throw new BadRequestException(String.format("There is no valid ongoing %s process",
                     tokenCodeType.getLabel()));

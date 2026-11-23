@@ -162,8 +162,11 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
             return;
         }
         PhoneMessageService phoneMessageService = context.getSession().getProvider(PhoneMessageService.class);
-        PhoneNumber phoneNumber = new PhoneNumber(context.getUser()
-                .getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER));
+        // 发给凭据登记的号码，与 validateAnswer 未指定凭据时用的默认凭据一致；不读可被改动的 phoneNumber 属性
+        PhoneOtpCredentialProvider credentialProvider = getCredentialProvider(context.getSession());
+        CredentialModel credential = credentialProvider
+                .getDefaultCredential(context.getSession(), context.getRealm(), context.getUser());
+        PhoneNumber phoneNumber = credentialProvider.getMfaPhoneNumber(context.getUser(), credential);
         Response challenge;
         try {
             phoneMessageService.sendTokenCode(phoneNumber, TokenCodeType.OTP);
