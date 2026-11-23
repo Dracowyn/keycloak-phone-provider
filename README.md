@@ -434,7 +434,7 @@ Release 附件取 `target/providers/` 的六个 provider jar，并标清可选�
 
 ## 版本与升级
 
-当前版本：**2.2.1**；Keycloak 基线：**26.8.2**。版本历史见 [CHANGELOG.md](./CHANGELOG.md)，接口和安全迁移见 [API.md](./API.md#前端迁移步骤)。
+当前版本：**2.3.0**；Keycloak 基线：**26.8.2**。版本历史见 [CHANGELOG.md](./CHANGELOG.md)，接口和安全迁移见 [API.md](./API.md#前端迁移步骤)。
 
 ### 已知限制
 

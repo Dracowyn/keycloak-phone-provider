@@ -1,6 +1,6 @@
 # 手机号与短信接口参考
 
-本文面向前端与服务端集成开发者，按当前源码说明接口，对应版本 2.2.1；各版本引入的行为变化单独标注。部署、配置键与认证流程见 [README](README.md)，版本历史见 [CHANGELOG](CHANGELOG.md)。本文由原 `API_MIGRATION_GUIDE.md` 改名整理而来。
+本文面向前端与服务端集成开发者，按当前源码说明接口，对应版本 2.3.0；各版本引入的行为变化单独标注。部署、配置键与认证流程见 [README](README.md)，版本历史见 [CHANGELOG](CHANGELOG.md)。本文由原 `API_MIGRATION_GUIDE.md` 改名整理而来。
 
 ## 目录
 
@@ -661,7 +661,7 @@ Content-Type: application/json
 | Cookie 属性与时效 | `HttpOnly; SameSite=Lax`，HTTPS 时附 `Secure`；有效期由认证执行器 `cookie.max.age` 控制，缺失、非法或非正数取 3600 秒。伪造、他人 Cookie 或绑定凭据已删除时不能豁免短信验证；签名是否仍可验证以当前 Keycloak 密钥状态为准，不承诺任意密钥轮换都会立即使全部旧令牌失效 |
 | 发送商不再回退 | 配置的发送商未部署时拒绝，发送资源返回 `SMS_SEND_FAILED`；匹配 ID 不区分大小写。默认发送商仍是 dummy，生产环境需显式配置并部署真实实现，避免验证码写入 dummy 日志 |
 | 号码验证状态 | `VERIFY_PHONE_OR_EMAIL` 要求号码非空且 `phoneNumberVerified=true` 才认定已验证；绑定号码会取消同号码其他账户的验证状态，不是删除其他账户的号码属性 |
-| 极验 v3 宕机隔离 | 自未发布版本起宕机模式受 `fallback_on_error` 控制，默认关闭：register 失败不登记宕机 challenge，人机验证不通过；关闭前已登记的也拒绝。开启时：只有本服务初始化失败后登记的 challenge 才走本地宕机校验，登记存在 Keycloak 一次性对象存储中，有效期 10 分钟，校验时消费；宕机验证本身只检查三字段非空，不是第三方真实校验，不再使用进程共享的宕机状态 |
+| 极验 v3 宕机隔离 | 自 2.3.0 起宕机模式受 `fallback_on_error` 控制，默认关闭：register 失败不登记宕机 challenge，人机验证不通过；关闭前已登记的也拒绝。开启时：只有本服务初始化失败后登记的 challenge 才走本地宕机校验，登记存在 Keycloak 一次性对象存储中，有效期 10 分钟，校验时消费；宕机验证本身只检查三字段非空，不是第三方真实校验，不再使用进程共享的宕机状态 |
 | 腾讯验证协议 | 后端 `DescribeCaptchaResult` 固定使用协议值 `CaptchaType=9`；旧配置不再改变该参数，非 9 仅告警；不能用它来选择滑块、点选等前端样式 |
 | 绑定、解绑只认 Bearer | `/sms/update-profile` 与 `/unset` 不再接受 Identity Cookie，防跨站请求伪造；前端须改为携带用户访问令牌，且令牌须由白名单客户端签发（默认 `account-console`，其他客户端返回 `403 CLIENT_NOT_ALLOWED`），见[绑定与解绑手机号](#绑定与解绑手机号) |
 | 并发校验 | 比对验证码前对该条记录加悲观写锁，并发提交错误验证码也最多比对 5 次，之后正确验证码同样失效 |
@@ -698,7 +698,7 @@ trerror_<错误码>_<应用ID>_<时间戳>
 | `keycloak.conf` 配置 | 处理与风险 |
 | --- | --- |
 | `spi-captcha-service-tencent-allow-disaster-ticket=true` | 直接放行人机验证，启动时打 WARN；攻击者也能自行构造对应前缀，因此不等同于真实校验成功 |
-| `spi-captcha-service-tencent-allow-disaster-ticket=false`（默认，自未发布版本起） | 拒绝容灾票据；未通过可信客户端检查时发送接口返回 `CAPTCHA_REQUIRED` |
+| `spi-captcha-service-tencent-allow-disaster-ticket=false`（默认，自 2.3.0 起） | 拒绝容灾票据；未通过可信客户端检查时发送接口返回 `CAPTCHA_REQUIRED` |
 
 默认拒绝：腾讯前端 SDK 加载失败时用户发不了短信。确实需要容灾放行的，在已有短信侧频控的前提下显式开启。此开关不同于腾讯 API 调用异常的 `spi-captcha-service-tencent-fallback-on-error`：后者默认 `false`，只处理捕获到的腾讯 SDK 异常。必填键缺失时人机验证一律不通过，与容灾开关无关。配齐必填键、可信后端保管客户端密钥及短信侧频控都应独立检查，完整配置表见 [README](README.md)。
 
@@ -719,7 +719,7 @@ trerror_<错误码>_<应用ID>_<时间戳>
 | 腾讯配置路径 | 错误文档曾写 `/tencent-captcha/code` | `/tencent/code` |
 | 手机号字段 | 有些接口兼容下划线字段 | 全部新代码统一 `areaCode`、`phoneNumber` |
 | 短信验证码字段 | 错误文档或示例曾写 `code` | 所有新代码统一 `smsCode`，包含绑定、直授及主题表单 |
-| 更新手机号认证 | 旧版只认 Identity Cookie | 自未发布版本起只认白名单客户端（默认 `account-console`）签发的 Bearer 访问令牌，Cookie 不能代替 |
+| 更新手机号认证 | 旧版只认 Identity Cookie | 自 2.3.0 起只认白名单客户端（默认 `account-console`）签发的 Bearer 访问令牌，Cookie 不能代替 |
 | OIDC 错误处理 | 不能混同短信业务状态 | 继续按 OAuth `error`、`error_description` 处理 |
 
 ### 更新请求封装
