@@ -43,7 +43,7 @@
 | --- | --- |
 | `GET /sms`、各 `resend-expires` | 无需登录 |
 | 五个短信发送端点 | 无需登录；按当前选中的人机验证实现校验提交参数，详见[发送参数](#发送参数与人机验证字段) |
-| `/sms/update-profile`、`/sms/update-profile/unset` | **只接受当前用户的 Bearer 访问令牌**（`Authorization: Bearer …`），不认 Keycloak Identity Cookie，也不会回退到 Cookie；只带 Cookie 返回 `401 AUTHENTICATION_REQUIRED`。身份 Cookie 是 `SameSite=None`，认它会让任意站点用跨站表单以用户身份换绑、解绑号码 |
+| `/sms/update-profile`、`/sms/update-profile/unset` | **只接受当前用户的 Bearer 访问令牌**（`Authorization: Bearer …`），不认 Keycloak Identity Cookie，也不会回退到 Cookie；只带 Cookie 返回 `401 AUTHENTICATION_REQUIRED`。身份 Cookie 是 `SameSite=None`，认它会让任意站点用跨站表单以用户身份换绑、解绑号码。签发客户端（令牌 `azp`）须在 `spi-phone-provider-config-allowed-write-clients` 白名单内，默认只有 `account-console`，否则返回 `403 CLIENT_NOT_ALLOWED` |
 | `/geetest/code`、`/tencent/code`、`/recaptcha/code` | 构造资源时先尝试 Identity Cookie，再尝试 Bearer；均未要求必须登录才能获取配置 |
 | OIDC `/protocol/openid-connect/token` | 按 Keycloak 客户端认证与直授流程处理，不要求 Identity Cookie |
 
@@ -330,7 +330,7 @@ curl -X POST '<base-url>/realms/<realm>/sms/verification-code/resend-expires' \
 
 ### POST /sms/update-profile
 
-必须在 `Authorization` 头携带该用户的有效访问令牌（`Bearer`），令牌由用户经当前 realm 的 OIDC 客户端登录取得；插件不检查令牌的 audience。只带 Identity Cookie 的请求一律返回 401。验证码应先从 `/sms/verification-code` 获取；`registration-code`、`authentication-code` 等类型不能替代。
+必须在 `Authorization` 头携带该用户的有效访问令牌（`Bearer`），令牌须由 `spi-phone-provider-config-allowed-write-clients` 白名单内的客户端签发（按令牌 `azp` 精确匹配，默认只有 Keycloak 自带账户中心 `account-console`）。自建前端用其他 clientId 时要加进白名单。插件不检查 audience 和角色：默认配置下 realm 里新建的客户端签的令牌同样带 `aud=account` 和 `manage-account`，区分不了客户端。只带 Identity Cookie 的请求一律返回 401。验证码应先从 `/sms/verification-code` 获取；`registration-code`、`authentication-code` 等类型不能替代。
 
 | 参数 | 是否必填 | 说明 |
 | --- | --- | --- |
@@ -376,6 +376,7 @@ HTTP/1.1 204 No Content
 | HTTP | 错误码 | 全部明确失败分支 |
 | --- | --- | --- |
 | 401 | `AUTHENTICATION_REQUIRED` | 没有 Bearer、令牌无效或过期，或 `Authorization` 不是 Bearer 格式；只带 Identity Cookie 也属于此情况。先于请求体解析检查 |
+| 403 | `CLIENT_NOT_ALLOWED` | 令牌有效，但签发客户端不在白名单内；同样先于请求体解析，请求体非法时也返回此码 |
 | 400 | `INVALID_REQUEST` | 已认证，但 JSON 解析失败 |
 | 400 | `PHONE_NUMBER_REQUIRED` | 已认证，但区号或号码为空 |
 | 400 | `VERIFICATION_CODE_REQUIRED` | `smsCode` 缺失或全空白 |
@@ -408,6 +409,7 @@ if (response.status !== 204) {
 | HTTP | 错误码 | 按执行顺序列出的失败分支 |
 | --- | --- | --- |
 | 401 | `AUTHENTICATION_REQUIRED` | 没有有效 Bearer 访问令牌；只带 Identity Cookie 也属于此情况 |
+| 403 | `CLIENT_NOT_ALLOWED` | 令牌的签发客户端不在白名单内 |
 | 403 | `PHONE_UNSET_NOT_ALLOWED` | `spi-phone-provider-config-allow-unset=false` |
 | 400 | `EMAIL_NOT_VERIFIED` | 当前用户邮箱未验证；该分支消息为“取消绑定手机号前需要先验证邮箱” |
 
@@ -598,6 +600,7 @@ Everybody 流程在验证码通过后，若找不到已验证号码用户，则�
 | `AREA_NOT_SUPPORTED` | 403 | 该地区暂不支持 | 发送时区号不在许可列表或列表加载失败 |
 | `USER_NOT_FOUND` | 404 | 用户不存在 | 仅认证、登录、重置发送接口；认证发送有 Everybody 例外 |
 | `AUTHENTICATION_REQUIRED` | 401 | 需要登录 | 绑定、解绑缺少有效 Bearer 访问令牌（Identity Cookie 不被认可） |
+| `CLIENT_NOT_ALLOWED` | 403 | 当前应用无权修改手机号 | 绑定、解绑令牌的签发客户端不在 `allowed-write-clients` 白名单内 |
 | `EMAIL_NOT_VERIFIED` | 400 | 邮箱未验证 | 解绑前邮箱未验证 |
 | `PHONE_UNSET_NOT_ALLOWED` | 403 | 不允许取消绑定手机号 | 解绑开关关闭 |
 | `TOKEN_NOT_FOUND` | 404 | 验证码不存在或已失效 | 重发时间查询无冷却记录或冷却已结束；不等同于验证码校验结果 |
@@ -657,7 +660,7 @@ Content-Type: application/json
 | 号码验证状态 | `VERIFY_PHONE_OR_EMAIL` 要求号码非空且 `phoneNumberVerified=true` 才认定已验证；绑定号码会取消同号码其他账户的验证状态，不是删除其他账户的号码属性 |
 | 极验 v3 宕机隔离 | 只有本服务初始化失败后登记的 challenge 才走本地宕机校验，登记存在 Keycloak 一次性对象存储中，有效期 10 分钟，校验时消费；宕机验证本身只检查三字段非空，不是第三方真实校验，不再使用进程共享的宕机状态 |
 | 腾讯验证协议 | 后端 `DescribeCaptchaResult` 固定使用协议值 `CaptchaType=9`；旧配置不再改变该参数，非 9 仅告警；不能用它来选择滑块、点选等前端样式 |
-| 绑定、解绑只认 Bearer | `/sms/update-profile` 与 `/unset` 不再接受 Identity Cookie，防跨站请求伪造；前端须改为携带用户访问令牌，见[绑定与解绑手机号](#绑定与解绑手机号) |
+| 绑定、解绑只认 Bearer | `/sms/update-profile` 与 `/unset` 不再接受 Identity Cookie，防跨站请求伪造；前端须改为携带用户访问令牌，且令牌须由白名单客户端签发（默认 `account-console`，其他客户端返回 `403 CLIENT_NOT_ALLOWED`），见[绑定与解绑手机号](#绑定与解绑手机号) |
 | 并发校验 | 比对验证码前对该条记录加悲观写锁，并发提交错误验证码也最多比对 5 次，之后正确验证码同样失效 |
 | 并发发送 | 同一 realm、号码、用途的发送按一次性对象原子占位，并发请求只有一个真正发出，其余返回 `RESEND_TOO_SOON`（可能不带 `details.resendExpires`）；发送失败释放占位 |
 | 短信 MFA 号码 | 发码与校验使用短信 OTP 凭据里登记的号码，不再读 `phoneNumber` 属性；旧凭据没有号码数据时回退到属性并打 WARN，用户重新验证号码后凭据补上号码 |
@@ -713,7 +716,7 @@ trerror_<错误码>_<应用ID>_<时间戳>
 | 腾讯配置路径 | 错误文档曾写 `/tencent-captcha/code` | `/tencent/code` |
 | 手机号字段 | 有些接口兼容下划线字段 | 全部新代码统一 `areaCode`、`phoneNumber` |
 | 短信验证码字段 | 错误文档或示例曾写 `code` | 所有新代码统一 `smsCode`，包含绑定、直授及主题表单 |
-| 更新手机号认证 | 旧版只认 Identity Cookie | 自未发布版本起只认 Bearer 访问令牌，Cookie 不能代替 |
+| 更新手机号认证 | 旧版只认 Identity Cookie | 自未发布版本起只认白名单客户端（默认 `account-console`）签发的 Bearer 访问令牌，Cookie 不能代替 |
 | OIDC 错误处理 | 不能混同短信业务状态 | 继续按 OAuth `error`、`error_description` 处理 |
 
 ### 更新请求封装
@@ -758,7 +761,7 @@ await requestPluginJson('<base-url>/realms/<realm>/sms/update-profile', {
 | `captchaNotCompleted` | `CAPTCHA_REQUIRED`；不等待从未启用的 `CAPTCHA_INVALID` |
 | `areaNotSupported` | `AREA_NOT_SUPPORTED` |
 | `userNotExists` | `USER_NOT_FOUND`，核对是否发送了正确类型 |
-| `needAuth` | `AUTHENTICATION_REQUIRED`，补上或刷新用户的 Bearer 访问令牌；登录会话 Cookie 不起作用 |
+| `needAuth` | `AUTHENTICATION_REQUIRED`，补上或刷新用户的 Bearer 访问令牌；登录会话 Cookie 不起作用。返回 `CLIENT_NOT_ALLOWED` 时是签发客户端不在白名单，刷新令牌无济于事，要改部署配置 |
 | `needVerifiedEmail` | `EMAIL_NOT_VERIFIED` |
 | `unsetPhoneNumberNotAllowed` | `PHONE_UNSET_NOT_ALLOWED` |
 | `illegalPhoneNumber` | `ILLEGAL_PHONE_NUMBER`，HTTP 403 |
@@ -773,7 +776,7 @@ await requestPluginJson('<base-url>/realms/<realm>/sms/update-profile', {
 | --- | --- |
 | 五类发码 | 正确类型、缺号码/区号、区号格式、许可地区、三类需已注册用户的端点、Everybody 新号码 |
 | 人机验证 | 实际选中实现的字段、缺参数、校验失败、配置缺失时一律拒绝、可信后端密钥路径；登录会话本身不豁免 |
-| 绑定与解绑 | 只带 Identity Cookie 被拒、Bearer 通过、`smsCode`、204 空体、绑定错误/过期、禁止解绑、邮箱未验证、凭据删除 |
+| 绑定与解绑 | 只带 Identity Cookie 被拒、白名单客户端的 Bearer 通过、其他客户端的 Bearer 返回 403、`smsCode`、204 空体、绑定错误/过期、禁止解绑、邮箱未验证、凭据删除 |
 | 生命周期 | 五次不匹配后作废、成功后不可重放、注册其他字段失败后仍可提交 |
 | 冷却 | 429 的可选详情、GET/POST JSON/form 三种查询、冷却结束后 404 |
 | 人机配置与跨域 | v3 完整响应、v4 响应、腾讯路径、reCAPTCHA 不提供 siteKey、实际 CORS 头而非仅检查 OPTIONS 200 |

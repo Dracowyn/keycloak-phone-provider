@@ -19,6 +19,7 @@ import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager.AuthResult;
 
 import java.io.IOException;
+import java.util.Set;
 
 import static jakarta.ws.rs.core.MediaType.APPLICATION_FORM_URLENCODED;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON;
@@ -35,11 +36,47 @@ public class VerificationCodeResource {
     private static final Logger logger = Logger.getLogger(VerificationCodeResource.class);
 
     private final KeycloakSession session;
-    private final AuthResult auth;
+    /**
+     * 调用方校验结果，构造时算一次，三个写入口共用
+     */
+    private final WriteCaller caller;
 
     VerificationCodeResource(KeycloakSession session) {
         this.session = session;
-        this.auth = authenticateBearer(session);
+        this.caller = WriteCaller.resolve(session);
+    }
+
+    /**
+     * 号码写接口的调用方：先认 Bearer，再要求令牌的签发客户端（{@code azp}）在
+     * {@code allowedWriteClients} 白名单内。两步都在解析请求体之前完成。
+     * <p>
+     * 不用 audience 或角色判断：Keycloak 26.8.2 实测，realm 内新建的普通公共客户端（默认 full scope）
+     * 给用户签的令牌同样带 {@code aud=account} 和 {@code account} 的 {@code manage-account}，拦不住其他客户端。
+     *
+     * @param user      通过校验时的用户，未通过时为 {@code null}
+     * @param rejection 未通过时的错误码，通过时为 {@code null}
+     */
+    private record WriteCaller(UserModel user, ErrorCode rejection) {
+
+        static WriteCaller resolve(KeycloakSession session) {
+            AuthResult auth = authenticateBearer(session);
+            if (auth == null) {
+                return new WriteCaller(null, ErrorCode.AUTHENTICATION_REQUIRED);
+            }
+            String azp = auth.token().getIssuedFor();
+            Set<String> allowed = session.getProvider(ConfigService.class).getAllowedWriteClients();
+            // 先判 null：不可变集合的 contains(null) 会抛 NPE
+            if (azp == null || !allowed.contains(azp)) {
+                // 外部请求可反复触发，只打 DEBUG
+                logger.debugf("拒绝号码写请求：签发客户端 %s 不在白名单内，用户 %s", azp, auth.user().getId());
+                return new WriteCaller(null, ErrorCode.CLIENT_NOT_ALLOWED);
+            }
+            return new WriteCaller(auth.user(), null);
+        }
+
+        boolean rejected() {
+            return rejection != null;
+        }
     }
 
     /**
@@ -74,9 +111,9 @@ public class VerificationCodeResource {
     @Produces(APPLICATION_JSON)
     @Consumes(APPLICATION_JSON)
     public Response setUserPhoneNumberJson(String reqBody) {
-        // 先认证再解析请求体：未登录时不论请求体如何都返回 401
-        if (auth == null) {
-            return ResponseBuilder.error(ErrorCode.AUTHENTICATION_REQUIRED);
+        // 先校验调用方再解析请求体：未登录（401）或客户端不在白名单（403）时不论请求体如何都直接拒绝
+        if (caller.rejected()) {
+            return ResponseBuilder.error(caller.rejection());
         }
         try {
             JsonNode jsonObject = new ObjectMapper().readTree(reqBody);
@@ -109,9 +146,9 @@ public class VerificationCodeResource {
                                        @FormParam(PhoneConstants.FIELD_PHONE_NUMBER) String phoneNumberStr,
                                        @FormParam(PhoneConstants.FIELD_VERIFICATION_CODE) String code) {
 
-        // 验证用户是否登录
-        if (auth == null) {
-            return ResponseBuilder.error(ErrorCode.AUTHENTICATION_REQUIRED);
+        // 验证用户是否登录、签发客户端是否在白名单内
+        if (caller.rejected()) {
+            return ResponseBuilder.error(caller.rejection());
         }
 
         PhoneNumber phoneNumber = new PhoneNumber(areaCode, phoneNumberStr);
@@ -127,7 +164,7 @@ public class VerificationCodeResource {
         }
 
         try {
-            UserModel user = auth.user();
+            UserModel user = caller.user();
             getTokenCodeService().setUserPhoneNumberByCode(user, phoneNumber, code);
             return ResponseBuilder.noContent();
         } catch (ForbiddenException e) {
@@ -151,9 +188,9 @@ public class VerificationCodeResource {
     @Produces(APPLICATION_JSON)
     @Consumes({APPLICATION_JSON, APPLICATION_FORM_URLENCODED})
     public Response unsetUserPhoneNumber() {
-        // 验证用户是否登录
-        if (auth == null) {
-            return ResponseBuilder.error(ErrorCode.AUTHENTICATION_REQUIRED);
+        // 验证用户是否登录、签发客户端是否在白名单内
+        if (caller.rejected()) {
+            return ResponseBuilder.error(caller.rejection());
         }
 
         ConfigService config = session.getProvider(ConfigService.class);
@@ -163,7 +200,7 @@ public class VerificationCodeResource {
             return ResponseBuilder.error(ErrorCode.PHONE_UNSET_NOT_ALLOWED);
         }
 
-        UserModel user = auth.user();
+        UserModel user = caller.user();
 
         // 检查邮箱是否已验证
         if (!user.isEmailVerified()) {

@@ -23,6 +23,7 @@ public enum ErrorCode {
     AREA_NOT_SUPPORTED(403, "该地区暂不支持"),
     USER_NOT_FOUND(404, "用户不存在"),
     AUTHENTICATION_REQUIRED(401, "需要登录"),
+    CLIENT_NOT_ALLOWED(403, "当前应用无权修改手机号"),
     EMAIL_NOT_VERIFIED(400, "邮箱未验证"),
     PHONE_UNSET_NOT_ALLOWED(403, "不允许取消绑定手机号"),
     TOKEN_NOT_FOUND(404, "验证码不存在或已失效"),

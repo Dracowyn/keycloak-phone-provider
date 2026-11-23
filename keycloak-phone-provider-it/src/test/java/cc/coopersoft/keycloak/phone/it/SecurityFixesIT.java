@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>连续输错 5 次只作废当前验证码，不清空重发冷却；</li>
  *   <li>注册表单 validate 阶段只校验不消费，其他字段出错时验证码仍可用，注册成功后号码被标记为已验证；</li>
  *   <li>首次配置短信 MFA：无号码用户可绑定新号码，已有已验证号码的用户不能借此换号；</li>
- *   <li>号码绑定 / 解绑接口只认 Bearer，跨站带身份 Cookie 的请求被拒；</li>
+ *   <li>号码绑定 / 解绑接口只认 Bearer，跨站带身份 Cookie 的请求被拒；签发客户端不在白名单内的令牌被拒；</li>
  *   <li>并发错误猜测绕不过输错上限，并发发送绕不过重发冷却。</li>
  * </ul>
  */
@@ -54,6 +54,8 @@ class SecurityFixesIT {
     private static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.2";
     private static final String REALM = "sec";
     private static final String CLIENT_ID = "it-app";
+    /** 号码写接口默认白名单里唯一的客户端：Keycloak 自带的账户中心。 */
+    private static final String ACCOUNT_CONSOLE = "account-console";
     private static final String REDIRECT_URI = "http://localhost/cb";
     private static final String COOKIE_NAME = "SMS_OTP_ANSWERED";
     private static final Pattern CODE_IN_LOG = Pattern.compile(">>>\\s*([0-9]{4,8})");
@@ -336,11 +338,11 @@ class SecurityFixesIT {
     }
 
     @Test
-    @DisplayName("update-profile：带 Bearer 的同一请求成功，号码换绑并标记为已验证")
+    @DisplayName("update-profile：白名单内客户端（account-console）签发的 Bearer 请求成功，号码换绑并标记为已验证")
     void phoneWriteAcceptsBearerToken() throws Exception {
         String own = "13900000021";
-        // Everybody 直授为新号码自动开户，用户名即号码
-        HttpResponse<String> grant = phoneGrant(own, sendCodeAndAwait("authentication-code", own));
+        // Everybody 直授为新号码自动开户，用户名即号码；令牌由默认白名单内的 account-console 签发
+        HttpResponse<String> grant = phoneGrant(ACCOUNT_CONSOLE, own, sendCodeAndAwait("authentication-code", own));
         assertThat(grant.statusCode()).as("取用户令牌: %s", grant.body()).isEqualTo(200);
         String accessToken = JSON.readTree(grant.body()).get("access_token").asText();
         String target = "13900000022";
@@ -354,6 +356,43 @@ class SecurityFixesIT {
 
         JsonNode user = findUser(own);
         assertThat(user.path("attributes").path("phoneNumber").get(0).asText()).isEqualTo("+86 " + target);
+        assertThat(user.path("attributes").path("phoneNumberVerified").get(0).asText()).isEqualTo("true");
+    }
+
+    @Test
+    @DisplayName("update-profile 与 unset：白名单外客户端签发的 Bearer 被拒（403 CLIENT_NOT_ALLOWED），先于请求体解析，号码不变")
+    void phoneWritesRejectNonWhitelistedClient() throws Exception {
+        String own = "13900000024";
+        HttpResponse<String> grant = phoneGrant(own, sendCodeAndAwait("authentication-code", own));
+        assertThat(grant.statusCode()).as("取 it-app 签发的用户令牌: %s", grant.body()).isEqualTo(200);
+        String bearer = "Bearer " + JSON.readTree(grant.body()).get("access_token").asText();
+        String attacker = "13900000025";
+        String code = sendCodeAndAwait("verification-code", attacker);
+
+        HttpResponse<String> update = http().send(crossSitePost("/update-profile",
+                        form(Map.of("areaCode", "86", "phoneNumber", attacker, "smsCode", code)))
+                        .header("Authorization", bearer).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(update.statusCode()).as("it-app 不在白名单内: %s", update.body()).isEqualTo(403);
+        assertThat(JSON.readTree(update.body()).get("code").asText()).isEqualTo("CLIENT_NOT_ALLOWED");
+
+        // 非法 JSON 也返回 403 而不是 400：白名单检查先于请求体解析
+        HttpResponse<String> json = http().send(HttpRequest.newBuilder(uri("/realms/" + REALM + "/sms/update-profile"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", bearer)
+                        .POST(HttpRequest.BodyPublishers.ofString("{not json")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(json.statusCode()).as("JSON 入口: %s", json.body()).isEqualTo(403);
+        assertThat(JSON.readTree(json.body()).get("code").asText()).isEqualTo("CLIENT_NOT_ALLOWED");
+
+        HttpResponse<String> unset = http().send(crossSitePost("/update-profile/unset", "")
+                        .header("Authorization", bearer).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(unset.statusCode()).as("解绑入口: %s", unset.body()).isEqualTo(403);
+        assertThat(JSON.readTree(unset.body()).get("code").asText()).isEqualTo("CLIENT_NOT_ALLOWED");
+
+        JsonNode user = findUser(own);
+        assertThat(user.path("attributes").path("phoneNumber").get(0).asText()).isEqualTo("+86 " + own);
         assertThat(user.path("attributes").path("phoneNumberVerified").get(0).asText()).isEqualTo("true");
     }
 
@@ -487,6 +526,25 @@ class SecurityFixesIT {
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(updated.statusCode()).as("更新 User Profile: %s", updated.body()).isEqualTo(200);
+
+        // 号码写接口默认只认 account-console 签发的令牌；给它开直授，才能像 it-app 一样用短信直授取令牌
+        enableDirectAccessGrants(ACCOUNT_CONSOLE, token);
+    }
+
+    private static void enableDirectAccessGrants(String clientId, String token) throws Exception {
+        JsonNode clients = JSON.readTree(
+                adminGet("/admin/realms/" + REALM + "/clients?clientId=" + clientId, token).body());
+        assertThat(clients).as("realm 中应有客户端 %s", clientId).hasSize(1);
+        ObjectNode client = (ObjectNode) clients.get(0);
+        client.put("directAccessGrantsEnabled", true);
+        HttpResponse<String> resp = http().send(HttpRequest.newBuilder(
+                                uri("/admin/realms/" + REALM + "/clients/" + client.get("id").asText()))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(client.toString()))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(resp.statusCode()).as("开启 %s 直授: %s", clientId, resp.body()).isEqualTo(204);
     }
 
     private static HttpResponse<String> adminGet(String path, String token) throws Exception {
@@ -608,11 +666,15 @@ class SecurityFixesIT {
     }
 
     private static HttpResponse<String> phoneGrant(String phone, String code) throws Exception {
+        return phoneGrant(CLIENT_ID, phone, code);
+    }
+
+    private static HttpResponse<String> phoneGrant(String clientId, String phone, String code) throws Exception {
         return http().send(HttpRequest.newBuilder(uri("/realms/" + REALM + "/protocol/openid-connect/token"))
                         .header("Content-Type", "application/x-www-form-urlencoded")
                         .POST(HttpRequest.BodyPublishers.ofString(form(Map.of(
                                 "grant_type", "password",
-                                "client_id", CLIENT_ID,
+                                "client_id", clientId,
                                 "areaCode", "86",
                                 "phoneNumber", phone,
                                 "smsCode", code))))

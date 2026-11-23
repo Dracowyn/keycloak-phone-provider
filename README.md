@@ -137,6 +137,7 @@ spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 | `spi-phone-provider-config-areacode-config` | `./areacode.json` | 区号许可列表路径；文件必须存在 |
 | `spi-phone-provider-config-area-locked` | `false` | 返回前端的区号锁定标记；服务端仍按列表校验请求区号，不强制等于默认值 |
 | `spi-phone-provider-config-allow-unset` | `true` | 是否允许 `/sms/update-profile/unset`；允许时仍要求用户邮箱已验证 |
+| `spi-phone-provider-config-allowed-write-clients` | `account-console` | 允许调用绑定、解绑接口的签发客户端（令牌 `azp`），逗号分隔、精确匹配，不支持通配符；不在名单内返回 `403 CLIENT_NOT_ALLOWED`。写成 `,` 表示全部拒绝（等号后留空会被 Keycloak 当作未配置，回到默认值） |
 | `spi-phone-provider-config-location-verify` | `false` | 启用归属地黑名单检查 |
 | `spi-phone-provider-config-location-appcode` | 未配置 | 归属地查询服务的 APPCODE |
 | `spi-phone-provider-config-location-black-list` | 未配置 | 归属地黑名单，英文逗号分隔 |
@@ -341,7 +342,7 @@ spi-phone-provider-config-location-black-list=\u865a\u62df
 | POST | `/sms/reset-code` | 重置凭据验证码 | 同上；需已验证号码用户 |
 | POST | `/sms/verification-code` | 绑定或首次配置 MFA 验证码 | 人机验证，或有效客户端 ID 与密钥豁免失败结果 |
 | GET、POST | `/sms/{发送端点}/resend-expires` | 五个发送端点各自的重发冷却查询 | 无 |
-| POST | `/sms/update-profile` | 验证并绑定手机号 | 用户 Bearer 访问令牌；不认 Identity Cookie（防跨站请求伪造） |
+| POST | `/sms/update-profile` | 验证并绑定手机号 | 用户 Bearer 访问令牌，签发客户端须在 `allowed-write-clients` 内（默认 `account-console`）；不认 Identity Cookie（防跨站请求伪造） |
 | POST | `/sms/update-profile/unset` | 解绑号码与短信 OTP 凭据 | 同上；另有配置与邮箱验证前置条件 |
 | GET、POST、OPTIONS | `/geetest/code` | 极验配置与预检 | 不强制登录 |
 | GET、POST、OPTIONS | `/tencent/code` | 腾讯云配置与预检 | 不强制登录 |
@@ -414,7 +415,7 @@ curl -X POST '<base-url>/realms/<realm>/protocol/openid-connect/token' \
 | 单元测试 | `mvn -B test` | 默认模块测试，不启动集成测试模块 |
 | 集成测试 | `mvn -B -Pit verify` | 需要可用 Docker；`it` profile 才加入集成测试模块，使用真实 Keycloak 容器 |
 
-`PhoneProviderIT` 覆盖 provider/SPI/JPA/Liquibase 加载、短信配置、dummy 发码持久化与重发查询。`SecurityFixesIT` 覆盖伪造及跨用户短信 Cookie 不可豁免、本人签名 Cookie 可用、Everybody 验证码不可重放、输错 5 次后保留冷却且更早发出的验证码不会重新生效、注册其他字段错误不提前消费验证码，首次 MFA 绑定新号码和禁止替换已有已验证号码，以及绑定接口拒绝只带 Identity Cookie（含跨站 Origin）、接受 Bearer，并发错误猜测不能绕过 5 次上限，并发发送遵守重发冷却。测试使用隔离 dummy 与 `phone-it` 主题，不能替代生产发送商和前端主题验收，也没有证明严格的小时配额。
+`PhoneProviderIT` 覆盖 provider/SPI/JPA/Liquibase 加载、短信配置、dummy 发码持久化与重发查询。`SecurityFixesIT` 覆盖伪造及跨用户短信 Cookie 不可豁免、本人签名 Cookie 可用、Everybody 验证码不可重放、输错 5 次后保留冷却且更早发出的验证码不会重新生效、注册其他字段错误不提前消费验证码，首次 MFA 绑定新号码和禁止替换已有已验证号码，以及绑定接口拒绝只带 Identity Cookie（含跨站 Origin）、接受 Bearer，白名单外客户端的令牌被拒，并发错误猜测不能绕过 5 次上限，并发发送遵守重发冷却。测试使用隔离 dummy 与 `phone-it` 主题，不能替代生产发送商和前端主题验收，也没有证明严格的小时配额。
 
 ### 发版约定
 

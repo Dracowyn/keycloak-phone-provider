@@ -9,6 +9,7 @@
 | 类别 | 变更 |
 |---|---|
 | 安全（**破坏性**） | `/sms/update-profile` 与 `/sms/update-profile/unset` 只认 Bearer 访问令牌，不再接受 Keycloak Identity Cookie：该 Cookie 是 `SameSite=None`，以前任意站点可用跨站表单以登录用户身份换绑号码（并标记已验证）或解绑号码。只带 Cookie 返回 `401 AUTHENTICATION_REQUIRED`，且先于请求体解析检查。**调用方须改为携带用户访问令牌后再升级**。 |
+| 安全（**破坏性**） | 绑定、解绑接口还要求令牌的签发客户端（`azp`）在新配置 `spi-phone-provider-config-allowed-write-clients` 白名单内，默认只有 `account-console`，否则返回新错误码 `403 CLIENT_NOT_ALLOWED`（先于请求体解析）。只认 Bearer 时，同 realm 任意客户端为用户签的令牌都能换绑号码。没有改用 audience 或角色校验，因为默认配置下新建客户端的令牌同样带 `aud=account` 和 `manage-account`。用其他 clientId 调用的部署须先把该客户端加进白名单。写成 `,` 表示全部拒绝并在启动时打 ERROR。 |
 | 安全 | 校验验证码前对该条记录加悲观写锁：以前并发提交错误验证码可绕过「输错 5 次作废」，现在任何并发交错下同一条验证码最多比对 5 次。不改表结构。 |
 | 安全 | 发送短信前按 realm、号码、用途在 Keycloak 一次性对象存储中原子占位：以前同号码并发发送可绕过重发冷却与小时上限。并发请求只有一个真正发出，其余返回 `RESEND_TOO_SOON`（占位方记录未提交时不带 `details.resendExpires`）；发送失败立即释放占位，节点在发送途中宕机时该号码最多被锁 60 秒。 |
 | 安全 | 短信 MFA 的发码与校验改用短信 OTP 凭据里登记的号码，不再读 `phoneNumber` 用户属性，属性被改动后第二因子不会跟着走。旧凭据没有号码数据时回退到属性并打 WARN。 |
