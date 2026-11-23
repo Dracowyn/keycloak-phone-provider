@@ -8,6 +8,8 @@
 
 | 类别 | 变更 |
 |---|---|
+| 人机验证 | **行为变更**：部署了就必须生效。极验缺 `id` / `key`、腾讯缺四项必填键之一、reCAPTCHA 缺 `secret`（空白也算缺失）时不再放行，发送接口返回 `CAPTCHA_REQUIRED`，启动时打 ERROR；reCAPTCHA 缺 `secret` 时不再向 siteverify 发请求。部署多个人机验证模块但未用 `spi-captcha-service--provider` 指定默认时，发送接口拒绝并打 ERROR（以前跳过人机验证）。一个都不部署时仍跳过。受信机密客户端豁免不变。 |
+| 重构 | 验证码校验、失败计数、号码绑定与注册表单两阶段校验收敛为单一实现；小时发送上限改为具名常量（仍为一小时 4 条）。外部行为不变。 |
 | 依赖 | Keycloak 基线升至 26.8.2（安全补丁，无扩展 API 移除；自带 BouncyCastle 仍为 1.86）。 |
 | 打包 | 腾讯云验证码 fat jar 不再捆绑 Keycloak 已提供的 Gson、commons-lang3、commons-io 和 commons-logging；阿里云短信 fat jar 不再捆绑 Gson、error_prone_annotations、httpclient、httpcore、commons-codec、commons-logging、commons-lang3 和 slf4j-api，运行时统一使用 Keycloak 提供的库。阿里云模块只使用默认 JSON 的 `CommonRequest` + `getCommonResponse`，不再捆绑 JAXB 运行时 `jaxb-runtime` 及其 txw2、istack、stax-ex 等传递依赖，避免与 Keycloak 自带版本发生同包冲突；仍保留 `javax.xml.bind`、`javax.activation` API。升级 `version.keycloak` 时需核对这些库。 |
 | 包名 | 扩展模块分别改用独立包 `cc.coopersoft.keycloak.phone.providers.captcha.tencent`、`cc.coopersoft.keycloak.phone.providers.captcha.geetest`、`cc.coopersoft.keycloak.phone.providers.captcha.recaptcha`、`cc.coopersoft.keycloak.phone.providers.sender.aliyun`、`cc.coopersoft.keycloak.phone.providers.sender.dummy`，不再与核心模块或其他扩展共用包；provider ID 与配置不变，自定义代码若直接引用旧类全名需修改 import。 |

@@ -5,13 +5,9 @@
  */
 package cc.coopersoft.keycloak.phone.authentication.forms;
 
-import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
-import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
-import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
-import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.authentication.FormAction;
 import org.keycloak.authentication.FormActionFactory;
@@ -23,7 +19,6 @@ import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.*;
 import org.keycloak.models.utils.FormMessage;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.services.validation.Validation;
 
 import jakarta.ws.rs.core.MultivaluedMap;
 
@@ -31,8 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
-
-    private static final Logger logger = Logger.getLogger(RegistrationPhoneNumber.class);
 
     public static final String PROVIDER_ID = "registration-phone";
 
@@ -100,16 +93,6 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
     }
 
     /**
-     * 获取TokenCodeService对象
-     *
-     * @param session Keycloak会话对象
-     * @return TokenCodeService对象
-     */
-    private TokenCodeService getTokenCodeService(KeycloakSession session) {
-        return session.getProvider(TokenCodeService.class);
-    }
-
-    /**
      * 验证手机号码和验证码
      *
      * @param context 验证上下文对象
@@ -142,10 +125,8 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
         }
 
         String verificationCode = formData.getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
-        // 只校验不消费（常量时间比较 + 失败计数）；success() 中 tokenValidated 消费，避免其他字段校验失败时验证码已作废
-        TokenCodeRepresentation tokenCode = Validation.isBlank(verificationCode) ? null
-                : getTokenCodeService(session).checkCode(phoneNumber, verificationCode, TokenCodeType.REGISTRATION);
-        if (tokenCode == null) {
+        // 只校验不消费；success() 中按 ID 消费，避免其他字段校验失败时验证码已作废
+        if (!RegistrationSmsCode.check(session, phoneNumber, verificationCode)) {
             context.error(Errors.INVALID_REGISTRATION);
             formData.remove(PhoneConstants.FIELD_VERIFICATION_CODE);
             errors.add(new FormMessage(PhoneConstants.FIELD_VERIFICATION_CODE, PhoneConstants.SMS_CODE_MISMATCH));
@@ -153,7 +134,6 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
             return;
         }
 
-        context.getSession().setAttribute(PhoneConstants.FIELD_TOKEN_ID, tokenCode.getId());
         context.success();
     }
 
@@ -164,10 +144,7 @@ public class RegistrationPhoneNumber implements FormAction, FormActionFactory {
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
 
         PhoneNumber phoneNumber = new PhoneNumber(formData);
-        String tokenId = context.getSession().getAttribute(PhoneConstants.FIELD_TOKEN_ID, String.class);
-
-        logger.info(String.format("registration user %s phone success, tokenId is: %s", user.getId(), tokenId));
-        getTokenCodeService(context.getSession()).tokenValidated(user, phoneNumber, tokenId);
+        RegistrationSmsCode.consume(context.getSession(), user, phoneNumber);
     }
 
     @Override

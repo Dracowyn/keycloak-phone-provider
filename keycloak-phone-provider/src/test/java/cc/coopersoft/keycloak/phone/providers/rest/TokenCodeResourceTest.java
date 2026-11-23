@@ -1,11 +1,16 @@
 package cc.coopersoft.keycloak.phone.providers.rest;
 
 import cc.coopersoft.keycloak.phone.authentication.authenticators.directgrant.EverybodyPhoneAuthenticatorFactory;
+import cc.coopersoft.keycloak.phone.providers.spi.CaptchaServiceProviderFactory;
+import jakarta.ws.rs.core.MultivaluedHashMap;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.keycloak.models.AuthenticationExecutionModel;
 import org.keycloak.models.AuthenticationFlowModel;
+import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.KeycloakSessionFactory;
 import org.keycloak.models.RealmModel;
+import org.keycloak.provider.ProviderFactory;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -72,6 +77,49 @@ class TokenCodeResourceTest {
 
         assertThat(TokenCodeResource.isEverybodyPhoneAuthenticationEnabled(enabledRealm)).isTrue();
         assertThat(TokenCodeResource.isEverybodyPhoneAuthenticationEnabled(ordinaryRealm)).isFalse();
+    }
+
+    @Test
+    @DisplayName("已部署人机验证实现但没有默认服务商时拒绝发送（CAPTCHA_REQUIRED）")
+    void deployedCaptchaWithoutDefaultProvider_rejects() {
+        ProviderFactory deployed = (ProviderFactory) Proxy.newProxyInstance(
+                CaptchaServiceProviderFactory.class.getClassLoader(),
+                new Class<?>[]{CaptchaServiceProviderFactory.class}, (proxy, method, args) -> {
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        KeycloakSession session = sessionWithoutDefaultCaptcha(List.of(deployed, deployed));
+
+        assertThat(TokenCodeResource.passesCaptcha(session, null, new MultivaluedHashMap<>())).isFalse();
+    }
+
+    @Test
+    @DisplayName("一个人机验证实现都没部署时跳过人机验证")
+    void noCaptchaDeployed_skipsCaptcha() {
+        KeycloakSession session = sessionWithoutDefaultCaptcha(List.of());
+
+        assertThat(TokenCodeResource.passesCaptcha(session, null, new MultivaluedHashMap<>())).isTrue();
+    }
+
+    /** 取不到默认 CaptchaService、但部署了给定 factory 的会话桩。 */
+    private static KeycloakSession sessionWithoutDefaultCaptcha(List<ProviderFactory> deployedFactories) {
+        KeycloakSessionFactory factory = (KeycloakSessionFactory) Proxy.newProxyInstance(
+                KeycloakSessionFactory.class.getClassLoader(),
+                new Class<?>[]{KeycloakSessionFactory.class}, (proxy, method, args) -> {
+                    if ("getProviderFactoriesStream".equals(method.getName())) {
+                        return deployedFactories.stream();
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        return (KeycloakSession) Proxy.newProxyInstance(KeycloakSession.class.getClassLoader(),
+                new Class<?>[]{KeycloakSession.class}, (proxy, method, args) -> {
+                    if ("getProvider".equals(method.getName()) && args.length == 1) {
+                        return null;
+                    }
+                    if ("getKeycloakSessionFactory".equals(method.getName())) {
+                        return factory;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
     }
 
     private static AuthenticationExecutionModel everybody(AuthenticationExecutionModel.Requirement requirement) {

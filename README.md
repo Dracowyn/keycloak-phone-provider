@@ -65,7 +65,7 @@
 | `keycloak-captcha-provider-recaptcha` / `keycloak-captcha-provider-recaptcha.jar` | reCAPTCHA 后端校验；配置接口不返回 siteKey | 按需，前端需自行集成 |
 | `keycloak-phone-provider-it` / 无部署 jar | Testcontainers 集成测试，默认不加入构建 | 不部署；通过 `it` profile 启用 |
 
-发送资源和各人机验证配置资源均获取当前默认的 `CaptchaService`，不根据请求路径或参数自动选厂商。最简单的部署是只安装一个人机验证模块；不要把三个模块一起复制后假定它们会自动匹配各自 URL。
+发送资源和各人机验证配置资源均获取当前默认的 `CaptchaService`，不根据请求路径或参数自动选厂商。最简单的部署是只安装一个人机验证模块；不要把三个模块一起复制后假定它们会自动匹配各自 URL。部署了多个模块时必须用 `spi-captcha-service--provider=<tencent|geetest|recaptcha>` 指定其一，否则发送资源拒绝请求（`CAPTCHA_REQUIRED`），配置资源返回 500。
 
 ### 构建与安装
 
@@ -103,7 +103,7 @@ spi-message-sender-service-aliyun-DEFAULT_TEMPLATE=<短信模板ID>
 spi-message-sender-service-aliyun-DEFAULT_SIGNNAME=<短信签名>
 ```
 
-`sender-service=aliyun` 按 provider ID **不区分大小写**匹配。指定实现未部署或拼错时拒绝发送，不会回退到 dummy 或其他实现。不部署任何人机验证模块时会跳过人机验证；上述最小配置不是完整的生产防刷配置。
+`sender-service=aliyun` 按 provider ID **不区分大小写**匹配。指定实现未部署或拼错时拒绝发送，不会回退到 dummy 或其他实现。不部署任何人机验证模块时会跳过人机验证；部署了人机验证模块但必填键不全时一律不通过（受信机密客户端除外）。上述最小配置不是完整的生产防刷配置。
 
 ### 必须部署 areacode.json
 

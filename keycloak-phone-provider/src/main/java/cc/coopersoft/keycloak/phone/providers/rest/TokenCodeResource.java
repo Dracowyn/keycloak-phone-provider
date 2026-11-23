@@ -30,6 +30,7 @@ import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.provider.ProviderFactory;
 import org.keycloak.services.managers.AppAuthManager;
 import org.keycloak.services.managers.AuthenticationManager;
 
@@ -125,12 +126,8 @@ public class TokenCodeResource {
             return ResponseBuilder.error(ErrorCode.PHONE_NUMBER_REQUIRED);
         }
 
-        // 验证人机验证码（未部署任何 captcha 模块时 provider 为 null，跳过人机验证）
-        CaptchaService captchaService = session.getProvider(CaptchaService.class);
-        if (captchaService == null) {
-            logger.warn("未配置CaptchaService Provider，跳过人机验证");
-        } else if (!captchaService.verify(formData, this.auth) &&
-                !isTrustedClient(formData.getFirst("client_id"), formData.getFirst("client_secret"))) {
+        // 验证人机验证码
+        if (!passesCaptcha(session, this.auth, formData)) {
             return ResponseBuilder.error(ErrorCode.CAPTCHA_REQUIRED);
         }
 
@@ -228,6 +225,46 @@ public class TokenCodeResource {
         }
     }
 
+    /**
+     * 人机验证关卡。
+     * <ul>
+     *     <li>有默认 CaptchaService：先调用其 verify，不通过时再看是否受信客户端；</li>
+     *     <li>已部署实现但没有默认服务商（多个实现并存且未指定）：拒绝，受信客户端除外；</li>
+     *     <li>一个实现都没部署：跳过人机验证。</li>
+     * </ul>
+     *
+     * @param session  Keycloak 会话
+     * @param auth     当前登录身份，可为 {@code null}
+     * @param formData 发送请求的参数
+     * @return 是否放行
+     */
+    static boolean passesCaptcha(KeycloakSession session, AuthenticationManager.AuthResult auth,
+                                 MultivaluedMap<String, String> formData) {
+        String clientId = formData.getFirst("client_id");
+        String clientSecret = formData.getFirst("client_secret");
+
+        CaptchaService captchaService = session.getProvider(CaptchaService.class);
+        if (captchaService != null) {
+            return captchaService.verify(formData, auth) || isTrustedClient(session, clientId, clientSecret);
+        }
+
+        // provider 为 null 有两种情况：一个实现都没部署（有意不启用人机验证），
+        // 或部署了多个实现却没指定默认服务商（Keycloak 无法选出默认实现）。后者是配置错误，不能静默放行。
+        boolean captchaDeployed;
+        try (Stream<ProviderFactory> factories = session.getKeycloakSessionFactory()
+                .getProviderFactoriesStream(CaptchaService.class)) {
+            captchaDeployed = factories.findAny().isPresent();
+        }
+        if (!captchaDeployed) {
+            logger.warn("未部署任何CaptchaService实现，跳过人机验证");
+            return true;
+        }
+
+        logger.error("已部署CaptchaService实现但没有默认服务商，拒绝发送；多个实现并存时须用 "
+                + "spi-captcha-service--provider=<provider-id> 指定其一（如 tencent、geetest、recaptcha）");
+        return isTrustedClient(session, clientId, clientSecret);
+    }
+
     static boolean isEverybodyPhoneAuthenticationEnabled(RealmModel realm) {
         try (Stream<AuthenticationFlowModel> flows = realm.getAuthenticationFlowsStream()) {
             return flows.filter(AuthenticationFlowModel::isTopLevel)
@@ -317,15 +354,16 @@ public class TokenCodeResource {
     /**
      * 判断是否为受信任的客户端
      *
-     * @param id     客户端ID
-     * @param secret 客户端 secret
+     * @param session Keycloak会话
+     * @param id      客户端ID
+     * @param secret  客户端 secret
      * @return true: 是信任的客户端; false: 不是信任的客户端
      */
-    private boolean isTrustedClient(String id, String secret) {
+    private static boolean isTrustedClient(KeycloakSession session, String id, String secret) {
         if (id == null || secret == null) {
             return false;
         }
-        ClientModel client = this.session.getContext().getRealm().getClientByClientId(id);
+        ClientModel client = session.getContext().getRealm().getClientByClientId(id);
         // 只有已启用的机密客户端可凭密钥跳过人机验证；公共客户端不应持有密钥，禁用客户端不应再被信任
         return client != null && client.isEnabled() && !client.isPublicClient() && client.validateSecret(secret);
     }

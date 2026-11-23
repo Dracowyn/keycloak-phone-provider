@@ -15,6 +15,7 @@ import org.keycloak.models.KeycloakSession;
 import org.keycloak.services.managers.AuthenticationManager;
 
 import jakarta.ws.rs.core.MultivaluedMap;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -48,6 +49,12 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
     private static final String DISASTER_TICKET_PREFIX_TR = "trerror_";
     private static final String DISASTER_TICKET_PREFIX_T = "terror_";
 
+    /**
+     * 必填配置键：缺任一都无法向腾讯云校验票据，此时人机验证一律不通过。
+     */
+    private static final List<String> REQUIRED_CONFIG_KEYS =
+            List.of("secretId", "secretKey", "captchaAppId", "appSecretKey");
+
     private final KeycloakSession session;
     
     @Setter
@@ -67,6 +74,21 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
         return user != null ? user.user().getId() : DEFAULT_USER_ID;
     }
 
+    /**
+     * 列出未配置（或为空白）的必填配置键。只返回键名，调用方据此打日志时不会带出任何密钥值。
+     *
+     * @param config 本 provider 的配置
+     * @return 缺失的键名，配置齐全时为空列表
+     */
+    static List<String> missingConfigKeys(Config.Scope config) {
+        return REQUIRED_CONFIG_KEYS.stream()
+                .filter(key -> {
+                    String value = config.get(key);
+                    return value == null || value.isBlank();
+                })
+                .toList();
+    }
+
     @Override
     public boolean verify(final MultivaluedMap<String, String> formParams, AuthenticationManager.AuthResult user) {
         return verify(formParams, getUserIdByAuthResult(user));
@@ -77,16 +99,18 @@ public class TencentCaptchaServiceImpl implements CaptchaService {
         // 确保用户ID不为空
         user = Optional.ofNullable(user).orElse(UNKNOWN_USER);
 
+        // 配置不全时无法校验，按不通过处理（部署了就必须生效，不能静默放行）
+        List<String> missingKeys = missingConfigKeys(config);
+        if (!missingKeys.isEmpty()) {
+            log.errorf("腾讯云验证码配置不完整，缺少配置键 %s，人机验证不通过", missingKeys);
+            return false;
+        }
+
         // 获取腾讯云配置
         String secretId = config.get("secretId");
         String secretKey = config.get("secretKey");
         String captchaAppId = config.get("captchaAppId");
         String appSecretKey = config.get("appSecretKey");
-
-        if (secretId == null || secretKey == null || captchaAppId == null || appSecretKey == null) {
-            log.warn("腾讯云验证码配置不完整，跳过验证");
-            return true;
-        }
 
         // 从表单参数获取票据和随机字符串
         String ticket = formParams.getFirst(PARAM_TICKET);

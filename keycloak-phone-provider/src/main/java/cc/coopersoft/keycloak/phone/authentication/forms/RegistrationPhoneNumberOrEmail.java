@@ -1,8 +1,5 @@
 package cc.coopersoft.keycloak.phone.authentication.forms;
 
-import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
-import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
-import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
@@ -101,10 +98,6 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
         return PROVIDER_ID;
     }
 
-    private TokenCodeService getTokenCodeService(KeycloakSession session) {
-        return session.getProvider(TokenCodeService.class);
-    }
-
     @Override
     public void validate(ValidationContext context) {
         MultivaluedMap<String, String> formData = context.getHttpRequest().getDecodedFormParameters();
@@ -159,18 +152,12 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
     private void validateSmsCode(ValidationContext context, MultivaluedMap<String, String> formData,
                                  List<FormMessage> errors, KeycloakSession session, PhoneNumber phoneNumber) {
         String verificationCode = formData.getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
-        // 只校验不消费（常量时间比较 + 失败计数）；success() 中 tokenValidated 消费，避免其他字段校验失败时验证码已作废
-        TokenCodeRepresentation tokenCode = Validation.isBlank(verificationCode) ? null
-                : getTokenCodeService(session).checkCode(phoneNumber, verificationCode, TokenCodeType.REGISTRATION);
-
-        if (tokenCode == null) {
+        // 只校验不消费；success() 中按 ID 消费，避免其他字段校验失败时验证码已作废
+        if (!RegistrationSmsCode.check(session, phoneNumber, verificationCode)) {
             context.error(INVALID_SMS_CODE);
             context.getEvent().detail(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
             errors.add(new FormMessage(PhoneConstants.FIELD_VERIFICATION_CODE, PhoneConstants.SMS_CODE_MISMATCH));
-            return;
         }
-
-        context.getSession().setAttribute(PhoneConstants.FIELD_TOKEN_ID, tokenCode.getId());
     }
 
     private void validateEmailRegistration(ValidationContext context, MultivaluedMap<String, String> formData,
@@ -275,7 +262,6 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
     private void handlePhoneRegistrationSuccess(FormContext context, UserModel user,
                                                 MultivaluedMap<String, String> formData) {
         PhoneNumber phoneNumber = new PhoneNumber(formData);
-        String tokenId = context.getSession().getAttribute(PhoneConstants.FIELD_TOKEN_ID, String.class);
 
         // 设置电子邮箱（如果有）
         String email = formData.getFirst(RegistrationPage.FIELD_EMAIL);
@@ -284,8 +270,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
             user.setEmailVerified(false);
         }
 
-        logger.info("Registration user " + tokenId + " phone success");
-        getTokenCodeService(context.getSession()).tokenValidated(user, phoneNumber, tokenId);
+        RegistrationSmsCode.consume(context.getSession(), user, phoneNumber);
     }
 
     private void handleEmailRegistrationSuccess(UserModel user, MultivaluedMap<String, String> formData) {

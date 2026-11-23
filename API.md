@@ -49,7 +49,7 @@
 
 发送时，正确的 `client_id` 与 `client_secret` 可使人机验证的失败结果不再阻止发送。自 2.2.1 起只认当前 realm 中**已启用的机密客户端**（非公共客户端）且 `validateSecret` 成功；部署时应只在可信后端保存和使用机密客户端密钥，绝不可把密钥发给浏览器。**人机验证方法仍先被调用**，这不是“不调用第三方验证服务”的保证，也不会绕过号码、区号、用户、频控或发送商检查。
 
-**已登录会话不会自动跳过人机验证**：三种实现收到 `AuthResult` 后只是取得用户 ID，仍会执行各自的参数和校验逻辑。没有部署任何 `CaptchaService` 时发送资源跳过人机验证；极验缺少 ID 或密钥、腾讯缺少四项必填键之一时也会放行。配置缺失不是安全模式，部署检查见 [README](README.md)。
+**已登录会话不会自动跳过人机验证**：三种实现收到 `AuthResult` 后只是取得用户 ID，仍会执行各自的参数和校验逻辑。没有部署任何 `CaptchaService` 时发送资源跳过人机验证。**部署了就必须生效**：极验缺少 `id` / `key`、腾讯缺少四项必填键之一、reCAPTCHA 缺少 `secret`（空白也算缺失）时人机验证一律不通过，返回 `CAPTCHA_REQUIRED`，启动时各打一条 ERROR；部署了多个人机验证模块却没用 `spi-captcha-service--provider` 指定默认服务商时，发送资源同样拒绝并打 ERROR。以上情况受信机密客户端仍可凭密钥通过。部署检查见 [README](README.md)。
 
 ### 统一错误格式
 
@@ -684,7 +684,7 @@ trerror_<错误码>_<应用ID>_<时间戳>
 | `spi-captcha-service-tencent-allow-disaster-ticket=true`（默认） | 直接放行人机验证；攻击者也能自行构造对应前缀，因此不等同于真实校验成功 |
 | `spi-captcha-service-tencent-allow-disaster-ticket=false` | 拒绝容灾票据；未通过可信客户端检查时发送接口返回 `CAPTCHA_REQUIRED` |
 
-安全敏感部署应根据可用性与防刷要求显式决定该开关，而不是依赖默认放行。此开关不同于腾讯 API 调用异常的 `spi-captcha-service-tencent-fallback-on-error`：后者默认 `false`，只处理捕获到的腾讯 SDK 异常。更早的配置不完整分支会直接放行，设置容灾开关为 `false` 也不能弥补缺少必填配置的问题。配齐必填键、可信后端保管客户端密钥及短信侧频控都应独立检查，完整配置表见 [README](README.md)。
+安全敏感部署应根据可用性与防刷要求显式决定该开关，而不是依赖默认放行。此开关不同于腾讯 API 调用异常的 `spi-captcha-service-tencent-fallback-on-error`：后者默认 `false`，只处理捕获到的腾讯 SDK 异常。必填键缺失时人机验证一律不通过，与容灾开关无关。配齐必填键、可信后端保管客户端密钥及短信侧频控都应独立检查，完整配置表见 [README](README.md)。
 
 ## 前端迁移步骤
 
