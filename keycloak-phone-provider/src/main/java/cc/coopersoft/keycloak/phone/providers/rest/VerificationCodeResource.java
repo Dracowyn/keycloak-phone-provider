@@ -150,8 +150,8 @@ public class VerificationCodeResource {
         }
 
         // 移除手机号相关属性
-        user.removeAttribute("phoneNumber");
-        user.removeAttribute("phoneNumberVerified");
+        user.removeAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER);
+        user.removeAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED);
 
         // 删除该用户的手机号OTP凭据
         user.credentialManager()

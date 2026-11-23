@@ -1,5 +1,6 @@
 package cc.coopersoft.keycloak.phone.authentication.forms;
 
+import cc.coopersoft.keycloak.phone.utils.StringUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.authentication.FormAction;
@@ -9,7 +10,6 @@ import org.keycloak.authentication.ValidationContext;
 import org.keycloak.forms.login.LoginFormsProvider;
 import org.keycloak.models.*;
 import org.keycloak.provider.ProviderConfigProperty;
-import org.keycloak.services.validation.Validation;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -135,7 +135,7 @@ public class RegistrationRedirectParametersReader implements FormActionFactory, 
 
         String redirectUri = context.getAuthenticationSession().getRedirectUri();
         logger.info("add user attribute form redirectUri:" + redirectUri);
-        if (Validation.isBlank(redirectUri)) {
+        if (StringUtils.isBlank(redirectUri)) {
             logger.error("no referer. cant get param in keycloak version");
             return;
         }
@@ -152,7 +152,7 @@ public class RegistrationRedirectParametersReader implements FormActionFactory, 
             logger.info("allow query param names:" + Arrays.toString(finalParamNames));
             queryParams.keySet()
                     .stream()
-                    .filter(v -> (finalParamNames != null && finalParamNames.length > 0) ? Arrays.asList(finalParamNames).contains(v) : !Validation.isBlank(v) && v.length() < 32 && Arrays.stream(QUERY_PARAM_BLACKLIST).noneMatch(item -> item.equals(v)))
+                    .filter(v -> (finalParamNames != null && finalParamNames.length > 0) ? Arrays.asList(finalParamNames).contains(v) : !StringUtils.isBlank(v) && v.length() < 32 && Arrays.stream(QUERY_PARAM_BLACKLIST).noneMatch(item -> item.equals(v)))
 
                     .forEach(v -> user.setAttribute(v, queryParams.get(v)));
 

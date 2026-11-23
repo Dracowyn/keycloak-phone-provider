@@ -20,7 +20,7 @@ public class UserUtils {
             return null;
         } else if (users.size() > 1){
             return users.stream()
-                    .filter(u -> u.getAttributeStream("phoneNumberVerified")
+                    .filter(u -> u.getAttributeStream(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED)
                             .anyMatch("true"::equals))
                     .findFirst().orElse(null);
         } else {
@@ -29,20 +29,20 @@ public class UserUtils {
     }
 
     private static UserModel singleUser(Stream<UserModel> users){
-        return users.filter(u -> u.getAttributeStream("phoneNumberVerified")
+        return users.filter(u -> u.getAttributeStream(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED)
                         .anyMatch("true"::equals)).findFirst().orElse(null);
     }
 
     public static UserModel findUserByPhone(UserProvider userProvider, RealmModel realm, PhoneNumber phoneNumber){
         Stream<UserModel> users = userProvider.searchForUserByUserAttributeStream(
-                realm, "phoneNumber", phoneNumber.getFullPhoneNumber());
+                realm, PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
         return singleUser(users);
     }
 
     public static UserModel findUserByPhone(UserProvider userProvider, RealmModel realm,
                                             PhoneNumber phoneNumber, String notIs){
         Stream<UserModel> users = userProvider.searchForUserByUserAttributeStream(
-                realm, "phoneNumber", phoneNumber.getFullPhoneNumber());
+                realm, PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
         return singleUser(users.filter(u -> !u.getId().equals(notIs)).collect(Collectors.toList()));
     }
 }

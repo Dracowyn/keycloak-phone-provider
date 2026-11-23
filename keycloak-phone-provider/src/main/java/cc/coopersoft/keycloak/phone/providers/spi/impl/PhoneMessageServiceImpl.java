@@ -126,7 +126,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
 
         // 判断是否可以重新发送短信验证码
         if (!getTokenCodeService().canResend(phoneNumber, type)) {
-            result = new MessageSendResult(-2).setError("rateTime", "Please wait for minutes.");
+            result = MessageSendResult.resendCooldown(MessageSendResult.ERROR_CODE_RATE_TIME, "Please wait for minutes.");
             try {
                 LocalDateTime resendExpires = getTokenCodeService().getResendExpires(phoneNumber, type);
                 if (resendExpires != null) {
@@ -142,7 +142,8 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         if (service.isEmpty()) {
             logger.error(String.format("SMS sender service '%s' is not deployed; refusing to send %s code to %s",
                     configuredService, type.getLabel(), phoneNumber.getFullPhoneNumber()));
-            return new MessageSendResult(-1).setError("senderServiceUnavailable", "SMS sender service is not available");
+            return MessageSendResult.failure(MessageSendResult.ERROR_CODE_SENDER_SERVICE_UNAVAILABLE,
+                    "SMS sender service is not available");
         }
 
         // 注意：发送前不删除旧验证码记录——最近1小时的记录要留给 isAbusing 做频控计数
@@ -170,11 +171,12 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
         // 判断是否启用归属地检测，并进行验证
         if (phoneLocation.verification(locationEnable, locationAppcode, phoneNumber, locationBlackList, session)) {
             logger.warn("Illegal phone number:" + phoneNumber.getFullPhoneNumber());
-            result = new MessageSendResult(-1).setError("illegalPhoneNumber", "Illegal phone number");
+            result = MessageSendResult.failure(MessageSendResult.ERROR_CODE_ILLEGAL_PHONE_NUMBER,
+                    "Illegal phone number");
 
             // 记录号码归属地验证失败事件
             eventBuilder.detail("verification_result", "location_blocked")
-                    .detail("error_code", "illegalPhoneNumber")
+                    .detail("error_code", MessageSendResult.ERROR_CODE_ILLEGAL_PHONE_NUMBER)
                     .detail("error_message", "Illegal phone number")
                     .error("SMS_LOCATION_BLOCKED");
         } else {
@@ -183,7 +185,7 @@ public class PhoneMessageServiceImpl implements PhoneMessageService {
                 result = session.getProvider(MessageSenderService.class, service)
                         .sendSmsMessage(type, phoneNumber, token.getCode(), tokenExpiresIn);
             } catch (MessageSendException e) {
-                result = new MessageSendResult(-1).setError(e.getErrorCode(), e.getErrorMessage());
+                result = MessageSendResult.failure(e.getErrorCode(), e.getErrorMessage());
             }
         }
 

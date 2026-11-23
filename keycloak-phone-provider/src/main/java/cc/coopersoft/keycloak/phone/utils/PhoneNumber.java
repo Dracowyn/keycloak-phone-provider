@@ -2,7 +2,6 @@ package cc.coopersoft.keycloak.phone.utils;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.keycloak.services.validation.Validation;
 
 import jakarta.ws.rs.core.MultivaluedMap;
 import java.util.Optional;
@@ -61,6 +60,6 @@ public class PhoneNumber {
     }
 
     public boolean isEmpty() {
-        return Validation.isBlank(phoneNumber) || Validation.isBlank(areaCode);
+        return StringUtils.isBlank(phoneNumber) || StringUtils.isBlank(areaCode);
     }
 }

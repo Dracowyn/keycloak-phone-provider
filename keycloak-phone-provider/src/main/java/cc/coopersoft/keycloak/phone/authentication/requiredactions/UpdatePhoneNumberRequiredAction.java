@@ -43,7 +43,7 @@ public class UpdatePhoneNumberRequiredAction implements RequiredActionProvider {
         RealmModel realm = context.getRealm();
 
         String newPhoneNumber = formData.getFirst(PhoneConstants.FIELD_PHONE_NUMBER);
-        String oldPhoneNumber = user.getFirstAttribute(PhoneConstants.FIELD_PHONE_NUMBER);
+        String oldPhoneNumber = user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER);
 
         if (!newPhoneNumber.equals(oldPhoneNumber)) {
             Response challenge = context.form()

@@ -13,7 +13,6 @@ import org.jboss.logging.Logger;
 import org.keycloak.Config;
 import org.keycloak.connections.httpclient.HttpClientProvider;
 import org.keycloak.models.KeycloakSession;
-import org.keycloak.services.ServicesLogger;
 import org.keycloak.services.managers.AuthenticationManager;
 import org.keycloak.util.JsonSerialization;
 
@@ -100,7 +99,7 @@ public class GoogleRecaptchaServiceImpl implements CaptchaService {
                 }
             }
         } catch (Exception e) {
-            ServicesLogger.LOGGER.recaptchaFailed(e);
+            log.error("reCAPTCHA 校验请求失败", e);
         }
         return success;
     }

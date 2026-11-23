@@ -19,7 +19,7 @@ public class DummySmsSenderServiceProviderImpl implements MessageSenderService {
     @Override
     public MessageSendResult sendSmsMessage(TokenCodeType type, PhoneNumber phoneNumber, String code, int expires) {
         logger.info(String.format("To: %s >>> %s", phoneNumber, code));
-        return new MessageSendResult(1).setResendExpires(60).setExpires(expires);
+        return MessageSendResult.success().setResendExpires(60).setExpires(expires);
     }
 
     @Override

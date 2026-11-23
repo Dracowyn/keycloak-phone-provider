@@ -6,11 +6,11 @@ import cc.coopersoft.keycloak.phone.credential.PhoneOtpCredentialProviderFactory
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.StringUtils;
 import org.keycloak.authentication.RequiredActionContext;
 import org.keycloak.authentication.RequiredActionProvider;
 import org.keycloak.credential.CredentialProvider;
 import org.keycloak.models.UserModel;
-import org.keycloak.services.validation.Validation;
 
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.ForbiddenException;
@@ -40,14 +40,14 @@ public class ConfigSmsOtpRequiredAction implements RequiredActionProvider {
         UserModel user = context.getUser();
         PhoneNumber phoneNumber = new PhoneNumber(context.getHttpRequest().getDecodedFormParameters());
         String code = context.getHttpRequest().getDecodedFormParameters().getFirst(PhoneConstants.FIELD_VERIFICATION_CODE);
-        if (phoneNumber.isEmpty() || Validation.isBlank(code)) {
+        if (phoneNumber.isEmpty() || StringUtils.isBlank(code)) {
             challengeWithError(context, phoneNumber, ERROR_CODE_MISMATCH);
             return;
         }
 
         String currentPhoneNumber = user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER);
         boolean hasVerifiedPhone = VerifyPhoneOrEmail.isPhoneNumberVerified(currentPhoneNumber,
-                user.getFirstAttribute("phoneNumberVerified"));
+                user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED));
 
         if (hasVerifiedPhone) {
             // 已有已验证号码：只能用该号码开启短信 MFA，换号须走更新手机号流程，
@@ -79,7 +79,7 @@ public class ConfigSmsOtpRequiredAction implements RequiredActionProvider {
     private void challengeWithError(RequiredActionContext context, PhoneNumber phoneNumber, String error) {
         Response challenge = context.form()
                 .setAttribute("areaCode", phoneNumber.getAreaCode())
-                .setAttribute("phoneNumber", phoneNumber.getPhoneNumber())
+                .setAttribute(PhoneConstants.FIELD_PHONE_NUMBER, phoneNumber.getPhoneNumber())
                 .setError(error)
                 .createForm(CONFIG_FORM);
         context.challenge(challenge);

@@ -5,10 +5,10 @@ import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresent
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.StringUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.UserModel;
-import org.keycloak.services.validation.Validation;
 
 /**
  * 注册表单的短信验证码两阶段处理：validate 阶段只校验不消费，success 阶段按 ID 消费。
@@ -33,7 +33,7 @@ final class RegistrationSmsCode {
      * @return 是否通过
      */
     static boolean check(KeycloakSession session, PhoneNumber phoneNumber, String verificationCode) {
-        if (Validation.isBlank(verificationCode)) {
+        if (StringUtils.isBlank(verificationCode)) {
             return false;
         }
         TokenCodeRepresentation tokenCode = session.getProvider(TokenCodeService.class)

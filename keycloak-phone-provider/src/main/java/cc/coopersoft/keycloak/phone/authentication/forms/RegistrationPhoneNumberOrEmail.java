@@ -2,6 +2,7 @@ package cc.coopersoft.keycloak.phone.authentication.forms;
 
 import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
+import cc.coopersoft.keycloak.phone.utils.StringUtils;
 import cc.coopersoft.keycloak.phone.utils.UserUtils;
 import org.jboss.logging.Logger;
 import org.keycloak.Config;
@@ -178,7 +179,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
         String email = formData.getFirst(Validation.FIELD_EMAIL);
 
         // 验证邮箱格式
-        if (Validation.isBlank(email)) {
+        if (StringUtils.isBlank(email)) {
             errors.add(new FormMessage(RegistrationPage.FIELD_EMAIL, Messages.MISSING_EMAIL));
             return;
         }
@@ -213,7 +214,7 @@ public class RegistrationPhoneNumberOrEmail implements FormAction, FormActionFac
         String password = formData.getFirst(RegistrationPage.FIELD_PASSWORD);
         String passwordConfirm = formData.getFirst(RegistrationPage.FIELD_PASSWORD_CONFIRM);
 
-        if (Validation.isBlank(password)) {
+        if (StringUtils.isBlank(password)) {
             errors.add(new FormMessage(RegistrationPage.FIELD_PASSWORD, Messages.MISSING_PASSWORD));
         } else if (!password.equals(passwordConfirm)) {
             errors.add(new FormMessage(RegistrationPage.FIELD_PASSWORD_CONFIRM, Messages.INVALID_PASSWORD_CONFIRM));

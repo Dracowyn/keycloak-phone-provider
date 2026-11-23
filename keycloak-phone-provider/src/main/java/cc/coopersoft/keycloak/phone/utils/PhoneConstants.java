@@ -22,4 +22,5 @@ public class PhoneConstants {
     public static final String SMS_CODE_MISMATCH = "smsCodeMismatch";
 
     public static final String USER_ATTRIBUTE_FIELD_PHONE_NUMBER = "phoneNumber";
+    public static final String USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED = "phoneNumberVerified";
 }

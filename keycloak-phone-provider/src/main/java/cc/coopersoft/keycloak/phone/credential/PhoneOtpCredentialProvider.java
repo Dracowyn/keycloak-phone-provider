@@ -3,6 +3,7 @@ package cc.coopersoft.keycloak.phone.credential;
 import cc.coopersoft.keycloak.phone.authentication.authenticators.browser.SmsOtpMfaAuthenticatorFactory;
 import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
+import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import org.jboss.logging.Logger;
 import org.keycloak.common.util.Time;
@@ -18,9 +19,17 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
         this.session = session;
     }
 
+    /**
+     * 必须用 {@code userModel.credentialManager()}：经用户缓存的 {@code UserModel}（如
+     * {@code org.keycloak.models.cache.infinispan.UserAdapter}）返回的是
+     * {@code SubjectCredentialManagerCacheAdapter}，它在创建/删除凭据时会调用
+     * {@code invalidateCacheForEntity} 使该用户缓存失效，读取也走缓存中的凭据列表。
+     * {@code session.users().getUserCredentialManager(user)} 返回裸的凭据管理器，绕过缓存失效，
+     * 会导致新建的短信 OTP 凭据在缓存过期前对其他读取路径不可见（MFA 可能不被要求），
+     * 已删除的凭据也会残留在缓存中。不要改回后者。
+     */
     private SubjectCredentialManager getCredentialStore(UserModel userModel) {
         return userModel.credentialManager();
-        //return session.userCredentialManager();
     }
 
     private TokenCodeService getTokenCodeService() {
@@ -43,7 +52,8 @@ public class PhoneOtpCredentialProvider implements CredentialProvider<PhoneOtpCr
     @Override
     public boolean isValid(RealmModel realm, UserModel user, CredentialInput input) {
 
-        PhoneNumber phoneNumber = new PhoneNumber(user.getFirstAttribute("phoneNumber"));
+        PhoneNumber phoneNumber = new PhoneNumber(user
+                .getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER));
         String code = input.getChallengeResponse();
 
         if (!(input instanceof UserCredentialModel)) {

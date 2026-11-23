@@ -205,7 +205,7 @@ public class TokenCodeResource {
                     .error("SMS_SEND_FAILED");
 
             // 重发冷却中（errorCode: rateTime）
-            if (result.getStatus() == -2) {
+            if (result.isResendCooldown()) {
                 if (result.getResendExpires() != null) {
                     Map<String, Object> details = new HashMap<>();
                     details.put("resendExpires", result.getResendExpiresTime());
@@ -216,7 +216,7 @@ public class TokenCodeResource {
             }
 
             // 手机号归属地不允许使用
-            if ("illegalPhoneNumber".equals(result.getErrorCode())) {
+            if (MessageSendResult.ERROR_CODE_ILLEGAL_PHONE_NUMBER.equals(result.getErrorCode())) {
                 return ResponseBuilder.error(ErrorCode.ILLEGAL_PHONE_NUMBER);
             }
 

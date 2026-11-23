@@ -162,7 +162,8 @@ public class SmsOtpMfaAuthenticator implements Authenticator, CredentialValidato
             return;
         }
         PhoneMessageService phoneMessageService = context.getSession().getProvider(PhoneMessageService.class);
-        PhoneNumber phoneNumber = new PhoneNumber(context.getUser().getFirstAttribute("phoneNumber"));
+        PhoneNumber phoneNumber = new PhoneNumber(context.getUser()
+                .getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER));
         Response challenge;
         try {
             phoneMessageService.sendTokenCode(phoneNumber, TokenCodeType.OTP);

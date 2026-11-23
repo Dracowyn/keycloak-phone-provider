@@ -9,6 +9,7 @@ import cc.coopersoft.keycloak.phone.providers.constants.TokenCodeType;
 import cc.coopersoft.keycloak.phone.providers.jpa.TokenCodeEntity;
 import cc.coopersoft.keycloak.phone.providers.representations.TokenCodeRepresentation;
 import cc.coopersoft.keycloak.phone.providers.spi.TokenCodeService;
+import cc.coopersoft.keycloak.phone.utils.PhoneConstants;
 import cc.coopersoft.keycloak.phone.utils.PhoneNumber;
 import org.jboss.logging.Logger;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
@@ -287,17 +288,18 @@ public class TokenCodeServiceImpl implements TokenCodeService {
      */
     private void markPhoneNumberVerified(UserModel user, PhoneNumber phoneNumber) {
         session.users()
-                .searchForUserByUserAttributeStream(session.getContext().getRealm(), "phoneNumber",
+                .searchForUserByUserAttributeStream(session.getContext().getRealm(),
+                        PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER,
                         phoneNumber.getFullPhoneNumber())
                 .filter(u -> !u.getId().equals(user.getId()))
                 .forEach(u -> {
                     logger.info(String.format("User %s also has phone number %s. Un-verifying.", u.getId(),
                             phoneNumber.getFullPhoneNumber()));
-                    u.setSingleAttribute("phoneNumberVerified", "false");
+                    u.setSingleAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED, "false");
                 });
 
-        user.setSingleAttribute("phoneNumberVerified", "true");
-        user.setSingleAttribute("phoneNumber", phoneNumber.getFullPhoneNumber());
+        user.setSingleAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED, "true");
+        user.setSingleAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER, phoneNumber.getFullPhoneNumber());
 
         cleanUpAction(user);
     }
@@ -338,7 +340,7 @@ public class TokenCodeServiceImpl implements TokenCodeService {
             return false;
         }
         // 号码不属于该用户：拒绝且不消费验证码
-        if (user.getAttributeStream("phoneNumber")
+        if (user.getAttributeStream(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER)
                 .noneMatch(p -> p.equals(phoneNumber.getFullPhoneNumber()))) {
             return false;
         }
@@ -392,7 +394,8 @@ public class TokenCodeServiceImpl implements TokenCodeService {
                     .getStoredCredentialsByTypeStream(PhoneOtpCredentialModel.TYPE).findFirst();
             if (credentialOptional.isPresent()) {
                 CredentialModel credential = credentialOptional.get();
-                PhoneNumber phoneNumber = new PhoneNumber(user.getFirstAttribute("phoneNumber"));
+                PhoneNumber phoneNumber = new PhoneNumber(user
+                        .getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER));
                 credential.setCredentialData(PhoneOtpCredentialModel.create(phoneNumber).getCredentialData());
                 PhoneOtpCredentialModel credentialModel = PhoneOtpCredentialModel.createFromCredentialModel(credential);
                 user.credentialManager().updateStoredCredential(credentialModel);

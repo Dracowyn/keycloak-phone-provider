@@ -69,7 +69,7 @@ public class AliyunSmsSenderServiceProviderImpl implements MessageSenderService 
             return parseResponse(response.getData(), expires);
         } catch (ClientException e) {
             logger.error(e.getMessage());
-            return new MessageSendResult(-1).setError(e.getErrCode(), e.getErrMsg());
+            return MessageSendResult.failure(e.getErrCode(), e.getErrMsg());
         }
     }
 
@@ -91,11 +91,11 @@ public class AliyunSmsSenderServiceProviderImpl implements MessageSenderService 
             }
             String code = response.get("Code").textValue();
             if ("OK".equals(code)) {
-                return new MessageSendResult(1).setResendExpires(60).setExpires(expires);
+                return MessageSendResult.success().setResendExpires(60).setExpires(expires);
             }
             String message = response.path("Message").asText(null);
             logger.warnf("阿里云短信发送失败，Code=%s，Message=%s", code, message);
-            return new MessageSendResult(-1).setError(code, message);
+            return MessageSendResult.failure(code, message);
         } catch (JsonProcessingException e) {
             return responseParseError("阿里云响应 JSON 无效：" + e.getOriginalMessage());
         }
@@ -103,7 +103,7 @@ public class AliyunSmsSenderServiceProviderImpl implements MessageSenderService 
 
     private static MessageSendResult responseParseError(String message) {
         logger.error(message);
-        return new MessageSendResult(-1).setError("ALIYUN_RESPONSE_PARSE_ERROR", message);
+        return MessageSendResult.failure("ALIYUN_RESPONSE_PARSE_ERROR", message);
     }
 
     @Override

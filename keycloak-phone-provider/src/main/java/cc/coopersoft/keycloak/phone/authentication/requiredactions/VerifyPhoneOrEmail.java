@@ -56,7 +56,7 @@ public class VerifyPhoneOrEmail extends VerifyEmail implements RequiredActionPro
 
     private boolean isUserPhoneNumberVerified(UserModel user) {
         return isPhoneNumberVerified(user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER),
-                user.getFirstAttribute("phoneNumberVerified"));
+                user.getFirstAttribute(PhoneConstants.USER_ATTRIBUTE_FIELD_PHONE_NUMBER_VERIFIED));
     }
 
     /**
